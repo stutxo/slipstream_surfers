@@ -5,6 +5,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import type { CharacterId } from '../characters';
 import { addGlamHair, addTiaraAndEarrings, addGlamNecklaces, addGlamWrist } from './glam';
 import { addBackpack } from './backpack';
+import { addPodcastMic, addKeyboard } from './props';
 
 export interface RunnerParts {
   group: THREE.Group;
@@ -12,6 +13,7 @@ export interface RunnerParts {
   legs: THREE.Group[];
   arms: THREE.Group[];
   eyebrows: THREE.Mesh[];
+  heldProp?: { kind: 'microphone' | 'keyboard'; object: THREE.Object3D; arm: number };
 }
 
 type HumanId = Exclude<CharacterId, 'transaction'>;
@@ -27,6 +29,7 @@ const cyan = new THREE.MeshBasicMaterial({ color: '#68ecff', toneMapped: false }
 const lens = new THREE.MeshPhongMaterial({ color: '#080f18', shininess: 110, specular: '#94b7ce' });
 const silver = new THREE.MeshPhongMaterial({ color: '#c3c9c6', shininess: 90 });
 const denim = new THREE.MeshPhongMaterial({ color: '#282f3c', shininess: 12 });
+const trackPants = new THREE.MeshPhongMaterial({ color: '#111216', shininess: 18 });
 
 function mesh(parent: THREE.Object3D, geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number) {
   const m = new THREE.Mesh(geometry, material);
@@ -159,15 +162,21 @@ export function makeHuman(id: HumanId): RunnerParts {
   if(isPeter) {
     const pack = addBackpack(shell);
     badge(shell,pack.badgeY,pack.badgeZ,.22);
-  } else {
-    badge(shell,isIFD?-.15:0,isIFD?.163:.164,isIFD?.20:.29);
   }
   // Hips, articulated limbs and chunky sneakers share exactly the same pivots.
-  box(group,isIFD?black:denim,0,.62,0,isIFD?.41:.46,.20,.28,.06);
+  box(group,isIFD?black:isPeter?trackPants:denim,0,.62,0,isIFD?.41:.46,.20,.28,.06);
   const legs:THREE.Group[]=[],arms:THREE.Group[]=[];
   for(const side of [-1,1]) {
     const leg=new THREE.Group();leg.position.set(side*.145,.63,0);group.add(leg);
-    mesh(leg,new THREE.CapsuleGeometry(isIFD?.078:.089,.27,5,12),isIFD?black:denim,0,-.22,0);
+    mesh(leg,new THREE.CapsuleGeometry(isIFD?.078:.089,.27,5,12),isIFD?black:isPeter?trackPants:denim,0,-.22,0);
+    if(isPeter) {
+      // Three white stripes follow the outer side of each black track-pant leg.
+      for(const z of [-.045,0,.045]) {
+        const x=side*(Math.sqrt(.089*.089-z*z)+.003);
+        box(leg,white,x,-.22,z,.012,.32,.014,.005);
+      }
+      mesh(leg,new THREE.CylinderGeometry(.087,.082,.045,12),trackPants,0,-.425,0);
+    }
     box(leg,white,0,-.51,-.07,.235,.17,.37,.06);
     box(leg,isPeter?red:id==='portlandhodl'?cyan:gold,0,-.566,-.064,.239,.026,.34,.012);
     for(let k=0;k<3;k++)box(leg,white,0,-.451,-.12-k*.045,.12,.012,.015,.004);
@@ -179,8 +188,15 @@ export function makeHuman(id: HumanId): RunnerParts {
     oval(arm,complexion,0,-.398,-.025,.082,.10,.075);
     oval(arm,complexion,-side*.061,-.369,-.059,.035,.049,.04);
     if(isIFD) addGlamWrist(arm,side===1);
+    if(isIFD && side===-1) addPodcastMic(arm);
+    if(id==='portlandhodl' && side===1) addKeyboard(arm);
     arms.push(arm);
   }
   group.traverse(o=>{if((o as THREE.Mesh).isMesh)o.frustumCulled=false;});
-  return {group,shell,legs,arms,eyebrows};
+  const heldProp: RunnerParts['heldProp'] = isIFD
+    ? { kind: 'microphone', object: group.getObjectByName('ifd-podcast-mic')!, arm: 0 }
+    : id==='portlandhodl'
+      ? { kind: 'keyboard', object: group.getObjectByName('portland-keyboard')!, arm: 1 }
+      : undefined;
+  return {group,shell,legs,arms,eyebrows,heldProp};
 }

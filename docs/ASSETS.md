@@ -3,7 +3,7 @@
 Original procedural assets are in `src/view/models.ts`, `src/view/player.ts`, and `src/view/textures.ts`.
 
 - Animated non-standard transaction mascot, CPFP child, batching companions, helmet and surfboard.
-- Three selectable rounded arcade human runners: PortlandHODL (bald, blue shirt and laser eyes), IFD (dirty-blonde feathered hair, black outfit, gold jewelry, jeweled tiara and a gold Rolex watch), and Peter Todd (brown hair and beard, sunglasses, red shirt and a hiking backpack with padded shoulder loops). The user supplied appearance references; reference photos are not shipped with the game. Portraits are rendered locally from the playable 3D models.
+- Three selectable rounded arcade human runners: PortlandHODL (bald, blue shirt, laser eyes and handheld keyboard), IFD (dirty-blonde feathered hair, black outfit, gold jewelry, jeweled tiara a gold Rolex watch and handheld podcast microphone), and Peter Todd (brown hair and beard, sunglasses, red shirt, a hiking backpack with padded shoulder loops, and black track trousers with three white side stripes). The user supplied appearance references; reference photos are not shipped with the game. Portraits are rendered locally from the playable 3D models.
 - Mining-rack convoys with graphite cabinets, ASIC cooling fans, heat-sink grills, orange roof rails and cyan direction markers.
 - Packet convoys: full blocks, giant JPEG inscriptions and rejection gates.
 - Grumpy router checkpoints, fee charts, scanning eyes, surveillance drone with magnifier.
@@ -23,6 +23,10 @@ The white MARA Slipstream lockup and Roboto Mono font match the reference at <ht
 - `public/assets/brand/roboto-mono-latin-400.woff2`: <https://slipstream.mara.com/assets/roboto-mono-latin-400-normal-GekRknry.woff2>. Font license: `public/assets/brand/OFL-RobotoMono.txt`, from <https://raw.githubusercontent.com/googlefonts/RobotoMono/main/OFL.txt>.
 - The background is an original live Three.js wireframe tunnel inspired by the site's white network graphic: fine curved lines, glowing junctions and a black backdrop. It is geometry, not an embedded reference-site video.
 
-The same local lockup appears on the loading screen, title screen, gameplay HUD and recorded replay.
+The same local lockup appears on the loading screen, title screen and gameplay HUD.
 
 `src/view/glam.ts` builds IFD’s feathered hair, tiara, necklaces, earrings, bangles and locally drawn green Rolex dial. The tiara is hidden while the mining helmet is active. `src/view/backpack.ts` builds Peter’s backpack and continuous shoulder straps. Both use procedural geometry, with no new remote assets.
+
+IFD and PortlandHODL have no Bitcoin badge on their backs. The original transaction mascot and Peter’s backpack retain their Bitcoin marks.
+
+`src/view/props.ts` builds the handheld podcast microphone and keyboard. Both attach to the palm, with holding poses shared by the selector portraits and running model.

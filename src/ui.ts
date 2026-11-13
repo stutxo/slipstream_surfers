@@ -7,7 +7,6 @@ import { CHARACTERS, DEFAULT_CHARACTER, characterInfo, type CharacterId } from '
 export type Screen = 'start' | 'play' | 'pause' | 'over';
 export interface UIHandlers {
   play(): void;
-  demo(record?: boolean): void;
   resume(): void;
   pause(): void;
   restart(): void;
@@ -71,7 +70,7 @@ export class UI {
             <p class="character-detail" id="character-detail" aria-live="polite"><b id="character-selected"></b><span id="character-subtitle"></span></p>
           </div>
           <button class="big" id="btn-play" data-k="play"></button>
-          <div class="demo-row"><button class="ghost" id="btn-demo">Watch demo</button><button class="ghost" id="btn-record">Record clip</button></div><p class="ctrl" id="ctrl"></p>
+          <p class="ctrl" id="ctrl"></p>
           <div class="row">
             <button class="chip" id="btn-lang" hidden></button><a class="chip link" href="https://slipstream.mara.com/" target="_blank" rel="noopener">SLIPSTREAM ↗</a>
             <button class="chip" id="btn-mute2"></button>
@@ -104,8 +103,6 @@ export class UI {
     root.querySelectorAll<HTMLElement>('[id]').forEach((e) => (this.el[e.id] = e));
     const tap = (id: string, fn: () => void) => this.el[id].addEventListener('click', (e) => { e.stopPropagation(); fn(); });
     tap('btn-play', () => h.play());
-    tap('btn-demo', () => h.demo());
-    tap('btn-record', () => h.demo(true));
     tap('btn-pause', () => h.pause());
     tap('btn-resume', () => h.resume());
     tap('btn-restart', () => h.restart());
@@ -223,24 +220,9 @@ export class UI {
     }
   }
 
-  status(distance: number, privateRoute: boolean, demo: boolean) {
-    this.el['route-status'].innerHTML = `${demo ? 'DEMO / ' : ''}${privateRoute ? 'PRIVATE ROUTE <i class="private"></i> MINER AHEAD' : 'PUBLIC MEMPOOL <i></i> SURVEILLANCE ACTIVE'} <b>${Math.floor(distance)} m</b>`;
+  status(distance: number, privateRoute: boolean) {
+    this.el['route-status'].innerHTML = `${privateRoute ? 'PRIVATE ROUTE <i class="private"></i> MINER AHEAD' : 'PUBLIC MEMPOOL <i></i> SURVEILLANCE ACTIVE'} <b>${Math.floor(distance)} m</b>`;
     this.root.dataset.route = privateRoute ? 'private' : 'public';
-  }
-
-  recording(active: boolean, url?: string, extension = 'webm') {
-    let el = this.root.querySelector<HTMLAnchorElement>('#replay');
-    if (!el) { el = document.createElement('a'); el.id = 'replay'; this.root.appendChild(el); }
-    el.className = 'replay';
-    el.textContent = active ? '● RECORDING DEMO' : url ? 'Download clip ↓' : '';
-    if (url) { el.href = url; el.download = `slipstream-surfers-network.${extension}`; }
-    else el.removeAttribute('href');
-    el.style.display = active || url ? 'block' : 'none';
-  }
-
-  complete(demo: boolean) {
-    this.el['result-title'].textContent = demo ? 'Delivered to the miner.' : t('over');
-    this.el['result-message'].textContent = demo ? 'Non-standard. Still valid. Keep surfing.' : '“Please explain the source of these sats.”';
   }
 
   hint(text: string, ms = 2200) {

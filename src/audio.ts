@@ -2,7 +2,6 @@
 export class Audio {
   ctx: AudioContext | null = null;
   private master!: GainNode;
-  private capture: MediaStreamAudioDestinationNode | null = null;
   private musicGain!: GainNode;
   private noise!: AudioBuffer;
   muted = false;
@@ -31,12 +30,6 @@ export class Audio {
       for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     }
     if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
-  }
-
-  captureStream() {
-    if (!this.ctx) return null;
-    if (!this.capture) { this.capture = this.ctx.createMediaStreamDestination(); this.master.connect(this.capture); }
-    return this.capture.stream;
   }
 
   setMuted(m: boolean) {

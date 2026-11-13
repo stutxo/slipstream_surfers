@@ -4,8 +4,6 @@ import { Sim } from './sim/sim';
 import { solve, type Spec } from './sim/track';
 import { World } from './view/world';
 import { createBitcoinCore } from './view/models';
-import { DemoPilot } from './sim/demo';
-import { ReplayRecorder } from './recorder';
 import { Audio } from './audio';
 import { bindInput, type Action } from './input';
 import { UI, type Screen } from './ui';
@@ -59,9 +57,6 @@ async function main() {
   const sim = new Sim(1);
   const audio = new Audio();
   audio.setMuted(load('muted', true));
-  const pilot = new DemoPilot(sim);
-  const recorder = new ReplayRecorder();
-  let demo = false, delivered = false, finishTime = 0;
   let best = load('best', 0);
   let bank = load('bank', 0);
   let state: Screen = 'start';
@@ -87,7 +82,6 @@ async function main() {
   };
   const ui = new UI(document.getElementById('ui')!, {
     play: () => play(),
-    demo: (record = false) => startDemo(record),
     resume: () => resume(),
     pause: () => pause(),
     restart: () => { toTitle(false); play(); },
@@ -106,9 +100,6 @@ async function main() {
 
   let seed = (Date.now() % 100000) + 1;
   function toTitle(show: boolean) {
-    recorder.stop();
-    demo = false; delivered = false; finishTime = 0;
-    ui.complete(false);
     seed = (seed * 48271) % 2147483647;
     sim.noSpawn = false;
     sim.reset(seed, !load('tutorialDone', false));
@@ -129,14 +120,6 @@ async function main() {
     sim.start();
     audio.startMusic();
     ui.show('play');
-  }
-  function startDemo(record: boolean) {
-    toTitle(false); pilot.reset(); demo = true;
-    play();
-    if (record) {
-      const ok = recorder.start(canvas, audio.captureStream(), (url, extension) => ui.recording(false, url, extension));
-      if (ok) ui.recording(true); else ui.toast('Recording unavailable in this browser. Demo is ready.');
-    }
   }
   function pause() {
     if (state !== 'play') return;
@@ -184,9 +167,9 @@ async function main() {
         audio.stopMusic();
         ui.flash('crash');
         const score = Math.floor(sim.score);
-        const newBest = !demo && score > best;
+        const newBest = score > best;
         if (newBest) { best = score; save('best', best); }
-        if (!demo) { bank += sim.coins; save('bank', bank); }
+        bank += sim.coins; save('bank', bank);
         ui.result({ score, coins: sim.coins, distance: Math.floor(sim.d), best, newBest });
         overTimer = 0;
         break;
@@ -225,7 +208,7 @@ async function main() {
   }
 
   function tick(dt: number, draw = true) {
-    if (state === 'play' && !delivered) { if (demo) pilot.update(); sim.update(dt); }
+    if (state === 'play') sim.update(dt);
     const events = sim.drainEvents();
     for (const ev of events) handle(ev);
     if (state === 'play' && !sim.alive) {
@@ -249,16 +232,9 @@ async function main() {
     }
     audio.rumble(rumble);
     ui.hud(Math.floor(sim.score), sim.coins, sim.mult, sim.power);
-    ui.status(sim.d, sim.power.slipstream > 0, demo);
-    canvas.setAttribute('aria-label', `Slipstream Surfers: ${state}, ${Math.floor(sim.d)} metres, ${sim.coins} sats, lane ${sim.lane + 1}${sim.y > 2 ? ', on packet roof' : ''}${sim.power.slipstream > 0 ? ', private tunnel' : ''}${demo ? ', demo' : ''}, character ${characterInfo(selectedCharacter).name}`);
-    if (demo && pilot.done && !delivered && sim.alive) {
-      delivered = true; finishTime = 0;
-      ui.result({score: Math.floor(sim.score), coins: sim.coins, distance: Math.floor(sim.d), best, newBest: false});
-      ui.complete(true); ui.show('over'); audio.power(); audio.stopMusic();
-    }
-    if (delivered) { finishTime += dt; if (finishTime > 2) { recorder.stop(); state = 'over'; } }
-    if (state === 'over' && !delivered) recorder.stop();
-    if (draw) { renderer.render(world.scene, world.camera); recorder.frame(canvas, sim, delivered); }
+    ui.status(sim.d, sim.power.slipstream > 0);
+    canvas.setAttribute('aria-label', `Slipstream Surfers: ${state}, ${Math.floor(sim.d)} metres, ${sim.coins} sats, lane ${sim.lane + 1}${sim.y > 2 ? ', on packet roof' : ''}${sim.power.slipstream > 0 ? ', private tunnel' : ''}, character ${characterInfo(selectedCharacter).name}`);
+    if (draw) renderer.render(world.scene, world.camera);
   }
 
   toTitle(false);
@@ -305,14 +281,14 @@ async function main() {
       step(sec: number, dt = 1 / 60, draw = false) {
         const n = Math.max(1, Math.round(sec / dt));
         for (let i = 0; i < n; i++) tick(dt, false);
-        if (draw) { renderer.render(world.scene, world.camera); recorder.frame(canvas, sim, delivered); }
+        if (draw) renderer.render(world.scene, world.camera);
         return sim.snapshot();
       },
       /** Step until the runner has reached distance d (or stopped). */
       stepTo(d: number, dt = 1 / 60, draw = false) {
         let guard = 0;
         while (sim.d < d && guard++ < 20000 && state === 'play' && sim.alive) tick(dt, false);
-        if (draw) { renderer.render(world.scene, world.camera); recorder.frame(canvas, sim, delivered); }
+        if (draw) renderer.render(world.scene, world.camera);
         return sim.snapshot();
       },
       render() { renderer.render(world.scene, world.camera); return true; },

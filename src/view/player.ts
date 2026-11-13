@@ -236,6 +236,7 @@ export class PlayerView {
         const shellRotation = rig.shell.quaternion.clone();
         const armRotations = rig.arms.map(a => a.quaternion.clone());
         const legRotations = rig.legs.map(a => a.quaternion.clone());
+        const propRotation = rig.heldProp?.object.quaternion.clone();
         try {
           scene.add(model); model.visible = true; model.position.set(0,0,0); model.rotation.set(0,0,0); model.scale.set(1,1,1);
           rig.shell.rotation.set(0,0,0); this.pose(rig,0,false);
@@ -252,6 +253,7 @@ export class PlayerView {
           rig.shell.quaternion.copy(shellRotation);
           rig.arms.forEach((a,i)=>a.quaternion.copy(armRotations[i]));
           rig.legs.forEach((a,i)=>a.quaternion.copy(legRotations[i]));
+          if(rig.heldProp && propRotation) rig.heldProp.object.quaternion.copy(propRotation);
         }
       }
     } finally {
@@ -302,6 +304,18 @@ export class PlayerView {
       arm.rotation.x = air ? -0.7 : (running ? -Math.sin(phase + i * Math.PI) * 0.8 : 0);
       arm.rotation.z = side * (air ? 1.0 : 0.24 + Math.sin(phase * 0.5) * 0.05);
     });
+    this.poseHeldProp(parts, phase, running, air);
+  }
+
+  private poseHeldProp(parts: RunnerParts, phase: number, running: boolean, air = false) {
+    const prop = parts.heldProp;
+    if(!prop) return;
+    const arm = parts.arms[prop.arm];
+    const bounce = Math.sin(phase) * (running ? .07 : .025);
+    arm.rotation.set(.65, 0,
+      (prop.kind === 'microphone' ? .85 : .12) + bounce + (air ? .12 : 0));
+    // Keep the mic upright and keyboard level while the palm follows the arm.
+    prop.object.quaternion.copy(arm.quaternion).invert();
   }
 
   menu(dt: number) {
@@ -311,8 +325,9 @@ export class PlayerView {
     this.root.rotation.set(0, Math.sin(this.time * 0.65) * 0.2, 0);
     this.model.position.y = Math.sin(this.time * 2.4) * 0.045;
     this.pose(this.packet, this.time * 2, false);
-    this.packet.arms[1].rotation.z = 2.2 + Math.sin(this.time * 3) * 0.18;
-    this.packet.arms[1].rotation.x = -0.2;
+    const wavingArm = this.packet.heldProp?.arm === 1 ? 0 : 1;
+    this.packet.arms[wavingArm].rotation.z = (wavingArm ? 1 : -1) * (2.2 + Math.sin(this.time * 3) * 0.18);
+    this.packet.arms[wavingArm].rotation.x = -0.2;
     this.packet.eyebrows.forEach((b,i) => { b.rotation.z=(i ? 1 : -1)*(.12 + Math.sin(this.time*.8)*.04); b.position.y=Number(b.userData.restY)+(i ? .025 : 0); });
   }
 
@@ -357,6 +372,7 @@ export class PlayerView {
     if (slipstream) {
       this.packet.legs[0].rotation.x = 0.2; this.packet.legs[1].rotation.x = -0.2;
       this.packet.arms[0].rotation.z = -0.7; this.packet.arms[1].rotation.z = 0.7;
+      this.poseHeldProp(this.packet, phase, false);
     }
     this.child.group.visible = p.cpfp > 0;
     this.child.group.position.set(Math.sin(this.time * 5) * 0.08, 0, 0.7);

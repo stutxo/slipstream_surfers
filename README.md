@@ -6,15 +6,13 @@ A Bitcoin-network adaptation of [DanielLin0516/SUBWAY-SURFERS](https://github.co
 
 Live game: [Slipstream Surfers](https://slipstream-surfers.xenocardo.chatgpt.site).
 
-Choose from four runners on the start screen: Transaction, PortlandHODL, IFD, or Peter Todd. The menu previews the actual animated 3D model; the choice is remembered locally and used for normal runs, demos, and recorded clips. All runners share the same movement, collisions and power-ups.
+Choose from four runners on the start screen: Transaction, PortlandHODL, IFD, or Peter Todd. The menu previews the actual animated 3D model; the choice is remembered locally and used for every run. All runners share the same movement, collisions and power-ups.
 
 You are a non-standard transaction. Change cables, jump fees and checkpoints, slide beneath scanning eyes, use ramps to surf connected mining-rack and transaction-packet roofs, and collect sats. Slipstream opens a temporary private route and loses the surveillance drone. The scene is an arcade metaphor; no real transactions are submitted.
 
 - Arrow keys / WASD: switch lanes, jump and slide. Space jumps.
 - P / Esc: pause. M: sound.
 - Touch: swipe in any direction.
-- Watch demo: a deterministic 60-second showcase using the same collisions as normal play.
-- Record clip: records the demo at the current screen aspect ratio, including a composed HUD and audio when sound is enabled. Download appears when finished. Demo scores do not affect personal records.
 
 Power-ups: sat magnet, script jump boost, batching multiplier, Slipstream tunnel, one-hit mining helmet, and CPFP speed boost.
 
@@ -37,4 +35,4 @@ All original subway models have been replaced with local Bitcoin assets. See [do
 
 ## Validation
 
-TypeScript compilation and Vite build; simulation regressions for collision, roof support, jump/slide, powers and generated paths; demo checked at25/30/60/120fps. Browser QA covers desktop and390px phone layout, keyboard controls, pause/resume, a full demo and video download.
+TypeScript compilation and Vite build; simulation regressions cover collision, roof support, jump/slide, powers, generated paths and a deterministic test route at 25/30/60/120 fps. Browser QA covers desktop and 390px phone layouts, keyboard controls, character selection and pause/resume.

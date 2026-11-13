@@ -337,10 +337,8 @@ export class World {
     this.nodeMat.opacity = .8 + .2 * this.tunnelStrength;
     this.tunnel.position.z = pd % 96;
     this.miner.visible=sim.power.slipstream>0;
-    // The final showcase delivers the transaction at the machine; ordinary tunnels
-    // also approach it continuously as their power-up expires.
-    const finalDemoTunnel=sim.noSpawn&&sim.d>800;
-    this.miner.position.z=finalDemoTunnel?-Math.max(12,12+(60-sim.time)*20):-Math.max(12,12+sim.power.slipstream*12);
+    // Approach the miner as the private-route power-up expires.
+    this.miner.position.z=-Math.max(12,12+sim.power.slipstream*12);
     this.drone.visible=!menu&&this.tunnelStrength<.5;
     this.drone.position.set(sim.x*.55-1.2,1.8+Math.sin(this.time*3)*.22,sim.alive?(sim.sinceStumble<4.5?1.5:3.3):.5);
     this.drone.rotation.set(.1,-.2+.2*Math.sin(this.time*2),Math.sin(this.time*4)*.08);

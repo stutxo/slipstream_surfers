@@ -9,11 +9,11 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const out = mkdtempSync(join(tmpdir(), 'slipstream-sim-'));
 try {
-  execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', 'src/config.ts', 'src/sim/sim.ts', 'src/sim/demo.ts', 'src/sim/track.ts', 'src/sim/rng.ts', 'src/sim/types.ts', '--target', 'ES2020', '--module', 'commonjs', '--moduleResolution', 'node', '--outDir', out, '--skipLibCheck', '--strict'], { stdio: 'inherit' });
-  const { Sim } = require(join(out, 'sim/sim.js'));
-  const { DemoPilot } = require(join(out, 'sim/demo.js'));
-  const { solve } = require(join(out, 'sim/track.js'));
-  const { speedAt, OB, trainLength, SPEED, CPFP_SPEED } = require(join(out, 'config.js'));
+  execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', 'src/config.ts', 'src/sim/sim.ts', 'tests/fixtures/route.ts', 'src/sim/track.ts', 'src/sim/rng.ts', 'src/sim/types.ts', '--target', 'ES2020', '--module', 'commonjs', '--moduleResolution', 'node', '--outDir', out, '--rootDir', '.', '--skipLibCheck', '--strict'], { stdio: 'inherit' });
+  const { Sim } = require(join(out, 'src/sim/sim.js'));
+  const { RoutePilot } = require(join(out, 'tests/fixtures/route.js'));
+  const { solve } = require(join(out, 'src/sim/track.js'));
+  const { speedAt, OB, trainLength, SPEED, CPFP_SPEED } = require(join(out, 'src/config.js'));
   const fresh = () => {
     const s = new Sim(1); s.noSpawn = true; s.reset(1, false); s.clearWorld(); s.speedOverride = 12; s.start(); return s;
   };
@@ -55,21 +55,21 @@ try {
   const batch = fresh(); batch.addPower('double', 1, 0.5, 1.1); batch.update(0.05); assert.equal(batch.mult, 2);
   const magnet = fresh(); magnet.addPower('magnet', 1, 0.5, 1.1); magnet.addCoin(0, 8, 0.85); runTo(magnet, 15); assert.equal(magnet.coins, 1, 'magnet collects adjacent-lane sats');
 
-  const demos = [];
+  const routeRuns = [];
   for (const dt of [1 / 30, 1 / 60, 1 / 120, 0.04]) {
-    const s = new Sim(1), pilot = new DemoPilot(s); pilot.reset(); s.start();
+    const s = new Sim(1), pilot = new RoutePilot(s); pilot.reset(); s.start();
     const events = {}, powers = []; let roofTime = 0;
     while (!pilot.done && s.alive) {
       pilot.update(); s.update(dt);
       if (s.grounded && s.y >= 3.3) roofTime += dt;
       for (const e of s.drainEvents()) { events[e.type] = (events[e.type] || 0) + 1; if (e.type === 'power') powers.push(e.kind); }
     }
-    assert(s.alive && pilot.done, 'demo completes using normal collision at dt=' + dt);
+    assert(s.alive && pilot.done, 'scripted regression route completes using normal collision at dt=' + dt);
     assert.equal(events.crash || 0, 0); assert.equal(events.stumble || 0, 0);
     assert(events.jump >= 6 && events.slide >= 4 && events.lane >= 6);
-    assert(roofTime > 12 && s.coins > 400, 'the faster showcase still rewards extended rooftop surfing');
+    assert(roofTime > 12 && s.coins > 400, 'the scripted route rewards extended rooftop surfing');
     assert.deepEqual(powers, ['magnet', 'slipstream', 'cpfp', 'double', 'helmet', 'slipstream']);
-    demos.push({ fps: Math.round(1 / dt), sats: s.coins, roofSeconds: +roofTime.toFixed(2) });
+    routeRuns.push({ fps: Math.round(1 / dt), sats: s.coins, roofSeconds: +roofTime.toFixed(2) });
   }
   const routes = [], opening = [];
   for (let seed = 1; seed <= 20; seed++) {
@@ -125,5 +125,5 @@ try {
     }
     assert(s.alive && s.d >= 270, 'opening survives CPFP (' + CPFP_SPEED + 'x) at dt=' + dt);
   }
-  console.log(JSON.stringify({ ok: true, checks: 'collision, powers, roof support, early density, orphan ramps, 20 real generated routes, CPFP opening', demos, generatedRoutes: routes.length, earlyAverages: Object.fromEntries(['convoys', 'racks', 'ramps'].map(k => [k, opening.reduce((sum, o) => sum + o[k], 0) / opening.length])) }, null, 2));
+  console.log(JSON.stringify({ ok: true, checks: 'collision, powers, roof support, early density, orphan ramps, 20 real generated routes, CPFP opening', routeRuns, generatedRoutes: routes.length, earlyAverages: Object.fromEntries(['convoys', 'racks', 'ramps'].map(k => [k, opening.reduce((sum, o) => sum + o[k], 0) / opening.length])) }, null, 2));
 } finally { rmSync(out, { recursive: true, force: true }); }

@@ -1,16 +1,15 @@
-// A repeatable 60-second showcase through the same simulation and collision rules as manual play.
+// A repeatable regression route through the same simulation and collision rules as manual play.
 // Distances, rather than wall-clock timers, schedule input so frame rate cannot shift a dodge.
-import { OB, trainLength } from '../config';
-import { Sim } from './sim';
-import type { ObKind, PowerKind } from './types';
+import { OB, trainLength } from '../../src/config';
+import { Sim } from '../../src/sim/sim';
+import type { ObKind, PowerKind } from '../../src/sim/types';
 
-export class DemoPilot {
+export class RoutePilot {
   readonly duration = 60;
   private acted = new Set<number>();
   constructor(private sim: Sim) {}
 
   get done() { return this.sim.time >= this.duration; }
-  get progress() { return Math.min(1, this.sim.time / this.duration); }
 
   reset() {
     const s = this.sim;
@@ -43,7 +42,7 @@ export class DemoPilot {
     packet(1, 270, 8, 2);
     packet(0, 277, 3, 0);
 
-    // The private tunnel is picked up, never enabled by a demo-only switch.
+    // The private tunnel uses regular power-up behavior.
     power('slipstream', 1, 340);
     obstacle('low', 1, 345, 1, 1);
     obstacle('hurdle', 1, 369);
