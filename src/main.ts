@@ -11,6 +11,7 @@ import { bindInput, type Action } from './input';
 import { UI, type Screen } from './ui';
 import { t, type Key } from './i18n';
 import { load, save } from './storage';
+import { characterId, characterInfo } from './characters';
 import { OB, trainLength, speedAt, SPEED, laneX, MOVER } from './config';
 import type { ObKind, PowerKind, SimEvent } from './sim/types';
 
@@ -53,6 +54,8 @@ async function main() {
   boot.set(0.95);
   await nextFrame();
   const world = new World(core, { shadowSize: mobile ? 1024 : 2048 });
+  let selectedCharacter = characterId(load<unknown>('character', 'transaction'));
+  world.player.setCharacter(selectedCharacter);
   const sim = new Sim(1);
   const audio = new Audio();
   audio.setMuted(load('muted', true));
@@ -91,7 +94,15 @@ async function main() {
     home: () => toTitle(true),
     toggleMute,
     langChanged: () => {},
+    selectCharacter: (id) => {
+      if (state !== 'start') return;
+      selectedCharacter = id;
+      world.player.setCharacter(id);
+      ui.setCharacter(id);
+      save('character', id);
+    },
   }, audio.muted);
+  ui.setCharacter(selectedCharacter);
 
   let seed = (Date.now() % 100000) + 1;
   function toTitle(show: boolean) {
@@ -239,7 +250,7 @@ async function main() {
     audio.rumble(rumble);
     ui.hud(Math.floor(sim.score), sim.coins, sim.mult, sim.power);
     ui.status(sim.d, sim.power.slipstream > 0, demo);
-    canvas.setAttribute('aria-label', `Slipstream Surfers: ${state}, ${Math.floor(sim.d)} metres, ${sim.coins} sats, lane ${sim.lane + 1}${sim.y > 2 ? ', on packet roof' : ''}${sim.power.slipstream > 0 ? ', private tunnel' : ''}${demo ? ', demo' : ''}`);
+    canvas.setAttribute('aria-label', `Slipstream Surfers: ${state}, ${Math.floor(sim.d)} metres, ${sim.coins} sats, lane ${sim.lane + 1}${sim.y > 2 ? ', on packet roof' : ''}${sim.power.slipstream > 0 ? ', private tunnel' : ''}${demo ? ', demo' : ''}, character ${characterInfo(selectedCharacter).name}`);
     if (demo && pilot.done && !delivered && sim.alive) {
       delivered = true; finishTime = 0;
       ui.result({score: Math.floor(sim.score), coins: sim.coins, distance: Math.floor(sim.d), best, newBest: false});
@@ -255,6 +266,7 @@ async function main() {
   await nextFrame();
   world.sync(sim, 0, true);
   world.warm(renderer);
+  ui.setCharacterPortraits(world.player.createPortraits(renderer));
   boot.set(1);
   ui.show('start');
   boot.done();

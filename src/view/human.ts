@@ -1,0 +1,213 @@
+// Rounded, rigged arcade humans. The supplied photographs guide outfits and silhouettes;
+// the game uses original geometry rather than putting a photo on the character's face.
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import type { CharacterId } from '../characters';
+
+export interface RunnerParts {
+  group: THREE.Group;
+  shell: THREE.Group;
+  legs: THREE.Group[];
+  arms: THREE.Group[];
+  eyebrows: THREE.Mesh[];
+}
+
+type HumanId = Exclude<CharacterId, 'transaction'>;
+const sphere = new THREE.SphereGeometry(1, 24, 16);
+const skin = new THREE.MeshPhongMaterial({ color: '#e8ad86', shininess: 24, specular: '#593e2f' });
+const fairSkin = new THREE.MeshPhongMaterial({ color: '#f0c5a1', shininess: 24, specular: '#593e2f' });
+const dark = new THREE.MeshPhongMaterial({ color: '#17202c', shininess: 22 });
+const black = new THREE.MeshPhongMaterial({ color: '#111318', shininess: 16 });
+const white = new THREE.MeshPhongMaterial({ color: '#faf6e8', shininess: 38 });
+const brown = new THREE.MeshPhongMaterial({ color: '#513426', shininess: 25 });
+const honey = new THREE.MeshPhongMaterial({ color: '#9a6636', shininess: 35 });
+const blonde = new THREE.MeshPhongMaterial({ color: '#c99857', shininess: 36 });
+const gold = new THREE.MeshPhongMaterial({ color: '#eac16d', shininess: 80, specular: '#ffe6a3' });
+const red = new THREE.MeshPhongMaterial({ color: '#bd343e', shininess: 18 });
+const cyan = new THREE.MeshBasicMaterial({ color: '#68ecff', toneMapped: false });
+const lens = new THREE.MeshPhongMaterial({ color: '#080f18', shininess: 110, specular: '#94b7ce' });
+const silver = new THREE.MeshPhongMaterial({ color: '#c3c9c6', shininess: 90 });
+const denim = new THREE.MeshPhongMaterial({ color: '#282f3c', shininess: 12 });
+const backpack = new THREE.MeshPhongMaterial({ color: '#3c4852', shininess: 12 });
+
+function mesh(parent: THREE.Object3D, geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number) {
+  const m = new THREE.Mesh(geometry, material);
+  m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true;
+  parent.add(m); return m;
+}
+function oval(parent: THREE.Object3D, mat: THREE.Material, x: number, y: number, z: number, sx: number, sy: number, sz: number) {
+  const m = mesh(parent, sphere, mat, x, y, z); m.scale.set(sx, sy, sz); return m;
+}
+function box(parent: THREE.Object3D, mat: THREE.Material, x: number, y: number, z: number, w: number, h: number, d: number, r = .04) {
+  return mesh(parent, new RoundedBoxGeometry(w, h, d, 3, r), mat, x, y, z);
+}
+function tube(parent: THREE.Object3D, mat: THREE.Material, points: number[][], radius: number) {
+  const curve = new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(...p as [number, number, number])));
+  return mesh(parent, new THREE.TubeGeometry(curve, 12, radius, 6, false), mat, 0, 0, 0);
+}
+function triangle(parent: THREE.Object3D, mat: THREE.Material, points: number[][]) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(points.flat(), 3));
+  g.setIndex([0, 1, 2]); g.computeVertexNormals();
+  return mesh(parent, g, mat, 0, 0, 0);
+}
+
+let shirtMaterial: THREE.Material | undefined;
+function dottedShirt() {
+  if (shirtMaterial) return shirtMaterial;
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#b9d8f1'; g.fillRect(0, 0, 256, 256);
+  g.fillStyle = '#577a9e';
+  for (let y = 10; y < 256; y += 21) for (let x = 10; x < 256; x += 21) {
+    g.beginPath(); g.arc(x + (y % 2) * 5, y, 1.65, 0, Math.PI * 2); g.fill();
+  }
+  const map = new THREE.CanvasTexture(c); map.colorSpace = THREE.SRGBColorSpace;
+  shirtMaterial = new THREE.MeshPhongMaterial({ map, shininess: 17 }); return shirtMaterial;
+}
+let badgeMaterial: THREE.MeshBasicMaterial | undefined;
+function badge(parent: THREE.Object3D, y: number, z: number, size = .29) {
+  if (!badgeMaterial) {
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const g = c.getContext('2d')!;
+    g.fillStyle = '#f7931a'; g.beginPath(); g.arc(128,128,124,0,Math.PI*2); g.fill();
+    g.fillStyle = '#fff'; g.font = 'bold 174px Arial'; g.textAlign = 'center'; g.fillText('B',128,188);
+    g.fillRect(103,41,11,29);g.fillRect(130,41,11,29);g.fillRect(103,177,11,32);g.fillRect(130,177,11,32);
+    const map = new THREE.CanvasTexture(c); map.colorSpace = THREE.SRGBColorSpace;
+    badgeMaterial = new THREE.MeshBasicMaterial({ map, transparent: true, toneMapped: false, depthWrite: false });
+  }
+  return mesh(parent, new THREE.PlaneGeometry(size,size), badgeMaterial, 0,y,z);
+}
+
+function head(parent: THREE.Group, id: HumanId, eyebrows: THREE.Mesh[]) {
+  const isIFD = id === 'ifd', isPeter = id === 'peter-todd';
+  const complexion = isIFD ? fairSkin : skin;
+  const h = new THREE.Group(); h.position.set(0,.53,0); parent.add(h);
+  h.name = id + '-head';
+  // Hair behind the face is built first, with individual rounded locks for a clear silhouette.
+  if (isIFD) {
+    oval(h, honey, 0,.015,.075,.36,.40,.285);
+    for (const side of [-1,1]) for (let i=0;i<4;i++) {
+      const lock = oval(h, i%2 ? blonde : honey, side*(.255+i*.025),-.20-i*.028,.10+i*.035,.085,.34,.095);
+      lock.rotation.z = side*(.10+i*.06);
+    }
+    for(let i=-2;i<=2;i++) {
+      const lock=oval(h,i%2?blonde:honey,i*.105,-.28,.235,.09,.30,.08);
+      lock.rotation.z=Math.sin(i)*.08;
+    }
+  }
+  oval(h, complexion,0,0,0,.315,.355,.27);
+  oval(h, complexion,0,-.21,isIFD ? -.025 : -.065,isIFD ? .21 : .235,isIFD ? .13 : .16,isIFD ? .145 : .20);
+  for (const side of [-1,1]) {
+    oval(h,complexion,side*.306,-.015,-.01,.063,.092,.05);
+    oval(h,new THREE.MeshPhongMaterial({color:isIFD?'#ce956f':'#c48261'}),side*.33,-.015,-.048,.026,.048,.014);
+  }
+  if (isPeter) {
+    // The cap and tousled fringe sit above the brow, keeping sunglasses readable.
+    oval(h,brown,0,.22,.025,.326,.19,.272);
+    for(let i=0;i<7;i++) {
+      const tuft=oval(h,i%3===0?new THREE.MeshPhongMaterial({color:'#765140',shininess:24}):brown,-.25+i*.08,.29+Math.sin(i*1.7)*.025,-.06-i%2*.10,.12,.055,.14);
+      tuft.rotation.z=-.35+i*.1;
+    }
+    oval(h,brown,0,-.19,-.10,.255,.20,.19);
+    oval(h,brown,0,-.305,-.135,.14,.12,.13);
+  }
+  if (isIFD) {
+    // Side-swept front locks and a side part echo the reference's long honey-brown hair.
+    const fringe=oval(h,blonde,-.13,.255,-.115,.225,.115,.18);fringe.rotation.z=-.32;
+    const sweep=oval(h,honey,.20,.18,-.10,.13,.22,.19);sweep.rotation.z=.3;
+    for(const side of [-1,1]) {
+      const lock=oval(h,blonde,side*.292,-.06,-.05,.065,.29,.10);lock.rotation.z=side*.08;
+      const hoop=mesh(h,new THREE.TorusGeometry(.052,.012,7,20),gold,side*.34,-.10,-.09);hoop.scale.y=1.4;
+    }
+  }
+  for (const side of [-1,1]) {
+    if (isPeter) {
+      // Rounded aviator lenses plus metal bridge and arms.
+      const frame=oval(h,silver,side*.13,.065,-.257,.126,.092,.028);frame.rotation.z=side*.10;
+      const glass=oval(h,lens,side*.13,.064,-.282,.111,.079,.023);glass.rotation.z=side*.10;
+      tube(h,silver,[[side*.225,.10,-.25],[side*.29,.10,-.17],[side*.32,.075,-.02]],.012);
+      const shine=box(h,new THREE.MeshBasicMaterial({color:'#627c8e'}),side*.13-.028,.085,-.305,.012,.07,.005,.002);shine.rotation.z=-.45;
+    } else {
+      oval(h,white,side*.125,.055,-.248,isIFD?.073:.083,isIFD?.052:.061,isIFD?.031:.04);
+      oval(h,id==='portlandhodl'?cyan:new THREE.MeshPhongMaterial({color:'#5b7475'}),side*.125,.055,isIFD?-.274:-.282,isIFD?.031:.038,isIFD?.035:.044,.015);
+      oval(h,black,side*.125,.055,isIFD?-.287:-.296,isIFD?.015:.018,isIFD?.023:.027,.008);
+      oval(h,white,side*.125-.011,.072,isIFD?-.295:-.304,.009,.011,.005);
+    }
+    const brow=box(h,brown,side*.126,.155,-.231,.13,.029,.03,.012);
+    brow.rotation.z=side*.1; brow.userData.restY=.155; eyebrows.push(brow);
+    if (id==='portlandhodl') {
+      const streak=box(h,cyan,side*.205,.055,-.3,.24,.018,.015,.004);streak.rotation.z=-side*.10;
+      oval(h,cyan,side*.125,.055,-.31,.045,.024,.01);
+    }
+  }
+  if (isPeter) box(h,silver,0,.084,-.282,.078,.014,.02,.004);
+  oval(h,complexion,0,-.03,isIFD?-.266:-.277,isIFD?.042:.055,isIFD?.061:.078,isIFD?.047:.072);
+  // Smiling mouths are tubes and teeth, so the face remains an actual 3D model.
+  const mouthColor=new THREE.MeshPhongMaterial({color:isIFD?'#9f4e4d':'#6d3528'});
+  tube(h,mouthColor,[[-.106,-.15,-.254],[0,-.184,-.28],[.108,-.145,-.253]],.013);
+  if(!isIFD) {
+    const teeth=box(h,white,0,-.16,-.281,.14,.031,.013,.011);teeth.rotation.x=.12;
+  } else tube(h,mouthColor,[[-.087,-.15,-.261],[0,-.145,-.285],[.087,-.147,-.26]],.009);
+  if(isPeter) {
+    for(const side of [-1,1]) {const moustache=oval(h,brown,side*.055,-.112,-.272,.066,.026,.025);moustache.rotation.z=side*.2;}
+  }
+}
+
+export function makeHuman(id: HumanId): RunnerParts {
+  const group = new THREE.Group(); group.name = id + '-runner';
+  const shell = new THREE.Group(); shell.position.y=.91; group.add(shell);
+  const isIFD=id==='ifd', isPeter=id==='peter-todd';
+  const complexion=isIFD?fairSkin:skin;
+  const cloth = isIFD ? black : isPeter ? red : dottedShirt();
+  box(shell,cloth,0,0,0,isIFD?.46:.53,.53,.30,.095);
+  oval(shell,complexion,0,.285,0,.105,.13,.10);
+  if(isIFD) {
+    triangle(shell,complexion,[[-.11,.254,-.155],[.11,.254,-.155],[0,.105,-.16]]);
+    box(shell,gold,0,-.255,-.164,.055,.025,.014,.005);
+  } else if(!isPeter) {
+    const collarMat=new THREE.MeshPhongMaterial({color:'#d1e6f8',shininess:18});
+    triangle(shell,collarMat,[[-.13,.26,-.162],[0,.16,-.18],[-.15,.09,-.17]]);
+    triangle(shell,collarMat,[[.13,.26,-.162],[.15,.09,-.17],[0,.16,-.18]]);
+    box(shell,collarMat,0,-.035,-.159,.027,.39,.013,.005);
+    for(let y=.10;y>-.25;y-=.09)oval(shell,white,0,y,-.172,.011,.011,.006);
+  }
+  head(shell,id,[]);
+  // Find the brows for the common rig's expression animation.
+  const eyebrows:THREE.Mesh[]=[];
+  shell.traverse(o=>{if(o.userData.restY!==undefined)eyebrows.push(o as THREE.Mesh);});
+  if(isPeter) {
+    box(shell,backpack,0,-.04,.23,.43,.48,.20,.08);
+    box(shell,dark,0,-.16,.344,.34,.16,.05,.035);
+    for(const side of [-1,1]) {
+      const strap=box(shell,backpack,side*.18,.015,-.172,.062,.48,.045,.025);strap.rotation.z=-side*.075;
+      box(shell,silver,side*.18,-.10,-.202,.067,.028,.014,.004);
+    }
+    badge(shell,.04,.335,.22);
+  } else {
+    badge(shell,isIFD?-.15:0,isIFD?.163:.164,isIFD?.20:.29);
+  }
+  // Hips, articulated limbs and chunky sneakers share exactly the same pivots.
+  box(group,isIFD?black:denim,0,.62,0,isIFD?.41:.46,.20,.28,.06);
+  const legs:THREE.Group[]=[],arms:THREE.Group[]=[];
+  for(const side of [-1,1]) {
+    const leg=new THREE.Group();leg.position.set(side*.145,.63,0);group.add(leg);
+    mesh(leg,new THREE.CapsuleGeometry(isIFD?.078:.089,.27,5,12),isIFD?black:denim,0,-.22,0);
+    box(leg,white,0,-.51,-.07,.235,.17,.37,.06);
+    box(leg,isPeter?red:id==='portlandhodl'?cyan:gold,0,-.566,-.064,.239,.026,.34,.012);
+    for(let k=0;k<3;k++)box(leg,white,0,-.451,-.12-k*.045,.12,.012,.015,.004);
+    legs.push(leg);
+    const arm=new THREE.Group();arm.position.set(side*(isIFD?.26:.30),1.11,0);group.add(arm);
+    arm.rotation.z=side*.24;
+    mesh(arm,new THREE.CapsuleGeometry(isIFD?.062:.075,.26,5,12),complexion,0,-.195,0);
+    if(!isIFD)mesh(arm,new THREE.CapsuleGeometry(.092,.08,5,12),cloth,0,-.06,0);
+    oval(arm,complexion,0,-.398,-.025,.082,.10,.075);
+    oval(arm,complexion,-side*.061,-.369,-.059,.035,.049,.04);
+    if(isIFD&&side===1) {
+      const bracelet=mesh(arm,new THREE.TorusGeometry(.066,.012,7,18),gold,0,-.32,0);bracelet.rotation.x=Math.PI/2;
+    }
+    arms.push(arm);
+  }
+  group.traverse(o=>{if((o as THREE.Mesh).isMesh)o.frustumCulled=false;});
+  return {group,shell,legs,arms,eyebrows};
+}

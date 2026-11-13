@@ -3,6 +3,7 @@
 Original procedural assets are in `src/view/models.ts`, `src/view/player.ts`, and `src/view/textures.ts`.
 
 - Animated non-standard transaction mascot, CPFP child, batching companions, helmet and surfboard.
+- Three selectable rounded arcade human runners: PortlandHODL (bald, blue shirt and laser eyes), IFD (long honey-brown hair, black outfit and gold earrings), and Peter Todd (brown hair and beard, sunglasses, red shirt and backpack). The user supplied appearance references; reference photos are not shipped with the game. Portraits are rendered locally from the playable 3D models.
 - Mining-rack convoys with graphite cabinets, ASIC cooling fans, heat-sink grills, orange roof rails and cyan direction markers.
 - Packet convoys: full blocks, giant JPEG inscriptions and rejection gates.
 - Grumpy router checkpoints, fee charts, scanning eyes, surveillance drone with magnifier.

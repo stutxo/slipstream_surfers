@@ -6,6 +6,8 @@ import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { Sim } from '../sim/sim';
 import type { SimEvent } from '../sim/types';
 import { laneX } from '../config';
+import { CHARACTERS, type CharacterId } from '../characters';
+import { makeHuman, type RunnerParts } from './human';
 
 type Clip = 'idle' | 'run' | 'jump' | 'jumpup' | 'fall' | 'roll' | 'die' | 'runlookback';
 const WHITE = new THREE.MeshLambertMaterial({ color: '#fff9e9' });
@@ -73,13 +75,7 @@ function labelTexture(back: boolean, baby = false) {
 }
 const labelMaterials: { front?: THREE.Material; back?: THREE.Material; child?: THREE.Material } = {};
 
-interface PacketParts {
-  group: THREE.Group;
-  shell: THREE.Group;
-  legs: THREE.Group[];
-  arms: THREE.Group[];
-  eyebrows: THREE.Mesh[];
-}
+type PacketParts = RunnerParts;
 
 function makePacket(baby = false): PacketParts {
   const group = new THREE.Group();
@@ -107,6 +103,7 @@ function makePacket(baby = false): PacketParts {
     ellipse(shell, WHITE, side * 0.21 + 0.025, 0.15, -0.352, 0.022, 0.028, 0.01);
     const brow = mesh(shell, new RoundedBoxGeometry(0.28, 0.065, 0.055, 2, 0.02), DARK, side * 0.21, 0.38, -0.28);
     brow.rotation.z = side * 0.12;
+    brow.userData.restY = .38;
     eyebrows.push(brow);
     // Cyan eye accents keep the facial expression readable.
     const streak = mesh(shell, new THREE.BoxGeometry(0.12, 0.028, 0.035), CYAN, side * 0.39, 0.12, -0.285);
@@ -135,6 +132,9 @@ export class PlayerView {
   mixer: THREE.AnimationMixer;
   actions = {} as Record<Clip, THREE.AnimationAction>;
   current: Clip | null = null;
+  character: CharacterId = 'transaction';
+  private characters: Record<CharacterId, RunnerParts>;
+  private portraits?: Record<CharacterId, string>;
   private packet: PacketParts;
   private child: PacketParts;
   private batch: PacketParts[];
@@ -151,10 +151,11 @@ export class PlayerView {
   private time = 0;
 
   constructor(_gltf: GLTF, scene: THREE.Scene) {
-    this.packet = makePacket();
+    this.characters = { transaction: makePacket(), portlandhodl: makeHuman('portlandhodl'), ifd: makeHuman('ifd'), 'peter-todd': makeHuman('peter-todd') };
+    this.packet = this.characters.transaction;
     this.model = this.packet.group;
     this.root.name = 'transaction-runner';
-    this.root.add(this.model);
+    for (const [id, rig] of Object.entries(this.characters)) { rig.group.visible = id === this.character; this.root.add(rig.group); }
     scene.add(this.root);
     this.mixer = new THREE.AnimationMixer(this.model);
     // The helmet and its lamp are attached to the packet, and follow slide/lean animation.
@@ -183,6 +184,80 @@ export class PlayerView {
     }
     this.root.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.frustumCulled = false; });
     this.reset();
+  }
+
+  /** Models are allocated once and reused; appearance never changes simulation dimensions. */
+  setCharacter(id: CharacterId) {
+    if (this.character === id) return;
+    this.mixer.stopAllAction();
+    this.character = id;
+    this.packet = this.characters[id];
+    for (const [key, rig] of Object.entries(this.characters)) rig.group.visible = key === id;
+    this.model = this.packet.group;
+    this.model.add(this.helmet);
+    this.helmet.position.y = id === 'transaction' ? 0 : .17;
+    this.helmet.scale.setScalar(id === 'transaction' ? 1 : .84);
+    // Scaling the original helmet also scales its local height; compensate at the attachment.
+    if (id !== 'transaction') this.helmet.position.y += .25;
+    this.mixer = new THREE.AnimationMixer(this.model);
+    this.reset();
+  }
+
+  /** A selector portrait is the actual game model, rendered off-screen only once. */
+  createPortraits(renderer: THREE.WebGLRenderer): Record<CharacterId, string> {
+    if (this.portraits) return this.portraits;
+    const size = 160;
+    const scene = new THREE.Scene();
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x5d6a7a, 2.1));
+    const key = new THREE.DirectionalLight(0xffe0bc, 2.7); key.position.set(-3, 5, -4); scene.add(key);
+    const rim = new THREE.DirectionalLight(0x9adfff, 1.8); rim.position.set(3, 2, 2); scene.add(rim);
+    const camera = new THREE.PerspectiveCamera(33, 1, .1, 10);
+    camera.position.set(-.38, 1.5, -2.55); camera.lookAt(0, 1.25, 0);
+    const target = new THREE.WebGLRenderTarget(size, size, { depthBuffer: true });
+    target.texture.colorSpace = THREE.SRGBColorSpace;
+    const oldTarget = renderer.getRenderTarget(), oldColor = renderer.getClearColor(new THREE.Color());
+    const oldAlpha = renderer.getClearAlpha(), oldAutoClear = renderer.autoClear;
+    const pixels = new Uint8Array(size * size * 4);
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+    const data = ctx.createImageData(size, size);
+    const portraits = {} as Record<CharacterId, string>;
+    const helmetVisible = this.helmet.visible; this.helmet.visible = false;
+    try {
+      renderer.autoClear = true;
+      renderer.setClearColor(0x000000, 0);
+      renderer.setRenderTarget(target);
+      for (const { id } of CHARACTERS) {
+        const rig = this.characters[id], model = rig.group;
+        const parent = model.parent, visible = model.visible;
+        const position = model.position.clone(), rotation = model.quaternion.clone(), scale = model.scale.clone();
+        const shellRotation = rig.shell.quaternion.clone();
+        const armRotations = rig.arms.map(a => a.quaternion.clone());
+        const legRotations = rig.legs.map(a => a.quaternion.clone());
+        try {
+          scene.add(model); model.visible = true; model.position.set(0,0,0); model.rotation.set(0,0,0); model.scale.set(1,1,1);
+          rig.shell.rotation.set(0,0,0); this.pose(rig,0,false);
+          if (id === 'transaction') { camera.position.set(-.36,1.27,-2.65); camera.lookAt(0,1.0,0); }
+          else { camera.position.set(-.38,1.5,-2.55); camera.lookAt(0,1.25,0); }
+          renderer.render(scene,camera);
+          renderer.readRenderTargetPixels(target,0,0,size,size,pixels);
+          for (let y=0;y<size;y++) data.data.set(pixels.subarray((size-y-1)*size*4,(size-y)*size*4),y*size*4);
+          ctx.putImageData(data,0,0); portraits[id]=canvas.toDataURL('image/png');
+        } finally {
+          scene.remove(model); if(parent) parent.add(model);
+          model.visible=visible; model.position.copy(position); model.quaternion.copy(rotation); model.scale.copy(scale);
+          rig.shell.quaternion.copy(shellRotation);
+          rig.arms.forEach((a,i)=>a.quaternion.copy(armRotations[i]));
+          rig.legs.forEach((a,i)=>a.quaternion.copy(legRotations[i]));
+        }
+      }
+    } finally {
+      this.helmet.visible = helmetVisible;
+      renderer.setRenderTarget(oldTarget); renderer.setClearColor(oldColor,oldAlpha); renderer.autoClear=oldAutoClear;
+      target.dispose();
+    }
+    this.portraits = portraits;
+    return portraits;
   }
 
   private spring(dt: number, target: number, k: 'lean' | 'yaw', kv: 'leanV' | 'yawV', stiff: number, damp: number) {
@@ -234,8 +309,7 @@ export class PlayerView {
     this.pose(this.packet, this.time * 2, false);
     this.packet.arms[1].rotation.z = 2.2 + Math.sin(this.time * 3) * 0.18;
     this.packet.arms[1].rotation.x = -0.2;
-    this.packet.eyebrows[0].rotation.z = -0.15 + Math.sin(this.time * 0.8) * 0.08;
-    this.packet.eyebrows[1].position.y = 0.41;
+    this.packet.eyebrows.forEach((b,i) => { b.rotation.z=(i ? 1 : -1)*(.12 + Math.sin(this.time*.8)*.04); b.position.y=Number(b.userData.restY)+(i ? .025 : 0); });
   }
 
   update(sim: Sim, dt: number, events: SimEvent[]) {
@@ -268,7 +342,7 @@ export class PlayerView {
     const sq = this.squash;
     this.model.scale.set(1 + sq * 0.5 + (sim.sliding ? 0.12 : 0), sim.sliding ? 0.43 : 1 - sq, 1 + sq * 0.5);
     this.packet.shell.rotation.z = Math.sin(phase) * (sim.grounded && sim.alive ? 0.025 : 0);
-    this.packet.eyebrows.forEach((b, i) => { b.position.y = 0.38; b.rotation.z = (i ? 1 : -1) * (this.stumbleT > 0 ? -0.25 : 0.12); });
+    this.packet.eyebrows.forEach((b, i) => { b.position.y = Number(b.userData.restY); b.rotation.z = (i ? 1 : -1) * (this.stumbleT > 0 ? -0.25 : 0.12); });
     this.helmet.visible = this.shield.visible = p.helmet > 0;
     this.shield.rotation.z = this.time;
     this.shield.position.y = 0.75 + Math.sin(this.time * 3) * 0.1;

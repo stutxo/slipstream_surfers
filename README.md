@@ -6,6 +6,8 @@ A Bitcoin-network adaptation of [DanielLin0516/SUBWAY-SURFERS](https://github.co
 
 Live game: [Slipstream Surfers](https://slipstream-surfers.xenocardo.chatgpt.site).
 
+Choose from four runners on the start screen: Transaction, PortlandHODL, IFD, or Peter Todd. The menu previews the actual animated 3D model; the choice is remembered locally and used for normal runs, demos, and recorded clips. All runners share the same movement, collisions and power-ups.
+
 You are a non-standard transaction. Change cables, jump fees and checkpoints, slide beneath scanning eyes, use ramps to surf connected mining-rack and transaction-packet roofs, and collect sats. Slipstream opens a temporary private route and loses the surveillance drone. The scene is an arcade metaphor; no real transactions are submitted.
 
 - Arrow keys / WASD: switch lanes, jump and slide. Space jumps.
@@ -31,7 +33,7 @@ Requires Node.js 22 or newer. Build output is `dist/`; deploy that directory to 
 
 ## Assets
 
-All original subway models have been replaced with local Bitcoin assets. See [docs/ASSETS.md](docs/ASSETS.md) for the model files, generated pixel-cat texture and generation prompt. The player is an original non-standard transaction mascot. The menus and HUD use the official white MARA Slipstream lockup and Roboto Mono font; a live white wireframe tunnel echoes the submission portal’s background. Asset sources and font license are listed in the asset documentation.
+All original subway models have been replaced with local Bitcoin assets. See [docs/ASSETS.md](docs/ASSETS.md) for the model files, generated pixel-cat texture and generation prompt. Playable runners include the original non-standard transaction mascot and three human avatars based on the supplied character references. The menus and HUD use the official white MARA Slipstream lockup and Roboto Mono font; a live white wireframe tunnel echoes the submission portal’s background. Asset sources and font license are listed in the asset documentation.
 
 ## Validation
 

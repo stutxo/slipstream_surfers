@@ -2,6 +2,7 @@
 import { t, getLang, setLang, LANGS, LANG_LABEL, type Key } from './i18n';
 import type { PowerKind } from './sim/types';
 import { POWER_TIME } from './config';
+import { CHARACTERS, DEFAULT_CHARACTER, characterInfo, type CharacterId } from './characters';
 
 export type Screen = 'start' | 'play' | 'pause' | 'over';
 export interface UIHandlers {
@@ -13,6 +14,7 @@ export interface UIHandlers {
   home(): void;
   toggleMute(): void;
   langChanged(): void;
+  selectCharacter(id: CharacterId): void;
 }
 
 const ICON = {
@@ -58,6 +60,16 @@ export class UI {
           <p class="tag" data-k="tagline"></p>
           <div class="mission">Your transaction. A direct route to the miner.<br>Surf mining racks. Dodge the filters. Stack sats.</div>
           <div class="stats"><div><small data-k="best"></small><b id="best">0</b></div><div><small data-k="coinsTotal"></small><b id="bank">0</b></div></div>
+          <div class="character-picker" id="character-picker">
+            <div class="character-heading"><span id="character-heading">CHOOSE YOUR SURFER</span><span>01 — 04</span></div>
+            <div class="character-options" role="group" aria-labelledby="character-heading">
+              ${CHARACTERS.map(character => `<button type="button" class="character-choice" id="character-${character.id}" data-character="${character.id}" style="--character-color:${character.color}" aria-label="Select ${character.name}" aria-pressed="false">
+                <span class="character-portrait"><img id="portrait-${character.id}" alt="" width="160" height="160" hidden><span class="portrait-placeholder" aria-hidden="true">${character.id === 'transaction' ? '₿' : character.name === 'Peter Todd' ? 'PT' : character.name === 'PortlandHODL' ? 'PH' : 'IFD'}</span><span class="character-check" aria-hidden="true">✓</span></span>
+                <span class="character-name">${character.name}</span>
+              </button>`).join('')}
+            </div>
+            <p class="character-detail" id="character-detail" aria-live="polite"><b id="character-selected"></b><span id="character-subtitle"></span></p>
+          </div>
           <button class="big" id="btn-play" data-k="play"></button>
           <div class="demo-row"><button class="ghost" id="btn-demo">Watch demo</button><button class="ghost" id="btn-record">Record clip</button></div><p class="ctrl" id="ctrl"></p>
           <div class="row">
@@ -102,6 +114,21 @@ export class UI {
     tap('btn-again', () => h.restart());
     tap('btn-mute', () => h.toggleMute());
     tap('btn-mute2', () => h.toggleMute());
+    const select = (id: CharacterId) => { this.setCharacter(id); h.selectCharacter(id); };
+    for (const character of CHARACTERS) {
+      const button = this.el['character-' + character.id];
+      tap('character-' + character.id, () => select(character.id));
+      button.addEventListener('keydown', (event) => {
+        const index = CHARACTERS.findIndex(item => item.id === character.id);
+        const delta = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
+        if (!delta && event.key !== 'Home' && event.key !== 'End') return;
+        event.preventDefault();
+        event.stopPropagation();
+        const next = CHARACTERS[event.key === 'Home' ? 0 : event.key === 'End' ? CHARACTERS.length - 1 : (index + delta + CHARACTERS.length) % CHARACTERS.length];
+        select(next.id);
+        this.el['character-' + next.id].focus({ preventScroll: true });
+      });
+    }
     tap('btn-lang', () => {
       const i = LANGS.indexOf(getLang());
       setLang(LANGS[(i + 1) % LANGS.length]);
@@ -112,7 +139,31 @@ export class UI {
     this.el['s-start'].addEventListener('click', (e) => { if (e.target === this.el['s-start']) h.play(); });
     for (const b of root.querySelectorAll('button')) b.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.setMuted(muted);
+    this.setCharacter(DEFAULT_CHARACTER);
     this.texts();
+  }
+
+  setCharacter(id: CharacterId) {
+    const selected = characterInfo(id);
+    for (const character of CHARACTERS) {
+      const active = character.id === id;
+      const button = this.el['character-' + character.id];
+      button.setAttribute('aria-pressed', String(active));
+      button.classList.toggle('selected', active);
+    }
+    this.el['character-selected'].textContent = selected.name;
+    this.el['character-subtitle'].textContent = selected.subtitle;
+    this.el['character-picker'].style.setProperty('--selected-color', selected.color);
+    this.root.dataset.character = id;
+  }
+
+  setCharacterPortraits(portraits: Record<CharacterId, string>) {
+    for (const character of CHARACTERS) {
+      const image = this.el['portrait-' + character.id] as HTMLImageElement;
+      image.src = portraits[character.id];
+      image.hidden = false;
+      this.el['character-' + character.id].classList.add('has-portrait');
+    }
   }
 
   texts() {
