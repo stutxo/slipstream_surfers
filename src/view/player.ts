@@ -149,9 +149,11 @@ export class PlayerView {
   private stumbleT = 0;
   private crashT = 0;
   private time = 0;
+  private tiara: THREE.Object3D | undefined;
 
   constructor(_gltf: GLTF, scene: THREE.Scene) {
     this.characters = { transaction: makePacket(), portlandhodl: makeHuman('portlandhodl'), ifd: makeHuman('ifd'), 'peter-todd': makeHuman('peter-todd') };
+    this.tiara = this.characters.ifd.group.getObjectByName('ifd-tiara');
     this.packet = this.characters.transaction;
     this.model = this.packet.group;
     this.root.name = 'transaction-runner';
@@ -238,6 +240,7 @@ export class PlayerView {
           scene.add(model); model.visible = true; model.position.set(0,0,0); model.rotation.set(0,0,0); model.scale.set(1,1,1);
           rig.shell.rotation.set(0,0,0); this.pose(rig,0,false);
           if (id === 'transaction') { camera.position.set(-.36,1.27,-2.65); camera.lookAt(0,1.0,0); }
+          else if (id === 'ifd') { camera.position.set(-.38,1.62,-2.75); camera.lookAt(0,1.34,0); }
           else { camera.position.set(-.38,1.5,-2.55); camera.lookAt(0,1.25,0); }
           renderer.render(scene,camera);
           renderer.readRenderTargetPixels(target,0,0,size,size,pixels);
@@ -285,6 +288,7 @@ export class PlayerView {
     this.model.scale.set(1, 1, 1);
     this.packet.shell.rotation.set(0, 0, 0);
     this.helmet.visible = this.shield.visible = this.board.visible = this.child.group.visible = false;
+    if(this.tiara) this.tiara.visible = true;
     for (const p of this.batch) p.group.visible = false;
   }
 
@@ -344,6 +348,7 @@ export class PlayerView {
     this.packet.shell.rotation.z = Math.sin(phase) * (sim.grounded && sim.alive ? 0.025 : 0);
     this.packet.eyebrows.forEach((b, i) => { b.position.y = Number(b.userData.restY); b.rotation.z = (i ? 1 : -1) * (this.stumbleT > 0 ? -0.25 : 0.12); });
     this.helmet.visible = this.shield.visible = p.helmet > 0;
+    if(this.tiara) this.tiara.visible = !(this.character === 'ifd' && p.helmet > 0);
     this.shield.rotation.z = this.time;
     this.shield.position.y = 0.75 + Math.sin(this.time * 3) * 0.1;
     this.shield.scale.setScalar(1 + Math.sin(this.time * 4) * 0.035);

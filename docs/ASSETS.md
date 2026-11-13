@@ -3,7 +3,7 @@
 Original procedural assets are in `src/view/models.ts`, `src/view/player.ts`, and `src/view/textures.ts`.
 
 - Animated non-standard transaction mascot, CPFP child, batching companions, helmet and surfboard.
-- Three selectable rounded arcade human runners: PortlandHODL (bald, blue shirt and laser eyes), IFD (long honey-brown hair, black outfit and gold earrings), and Peter Todd (brown hair and beard, sunglasses, red shirt and backpack). The user supplied appearance references; reference photos are not shipped with the game. Portraits are rendered locally from the playable 3D models.
+- Three selectable rounded arcade human runners: PortlandHODL (bald, blue shirt and laser eyes), IFD (dirty-blonde feathered hair, black outfit, gold jewelry, jeweled tiara and a gold Rolex watch), and Peter Todd (brown hair and beard, sunglasses, red shirt and a hiking backpack with padded shoulder loops). The user supplied appearance references; reference photos are not shipped with the game. Portraits are rendered locally from the playable 3D models.
 - Mining-rack convoys with graphite cabinets, ASIC cooling fans, heat-sink grills, orange roof rails and cyan direction markers.
 - Packet convoys: full blocks, giant JPEG inscriptions and rejection gates.
 - Grumpy router checkpoints, fee charts, scanning eyes, surveillance drone with magnifier.
@@ -24,3 +24,5 @@ The white MARA Slipstream lockup and Roboto Mono font match the reference at <ht
 - The background is an original live Three.js wireframe tunnel inspired by the site's white network graphic: fine curved lines, glowing junctions and a black backdrop. It is geometry, not an embedded reference-site video.
 
 The same local lockup appears on the loading screen, title screen, gameplay HUD and recorded replay.
+
+`src/view/glam.ts` builds IFD’s feathered hair, tiara, necklaces, earrings, bangles and locally drawn green Rolex dial. The tiara is hidden while the mining helmet is active. `src/view/backpack.ts` builds Peter’s backpack and continuous shoulder straps. Both use procedural geometry, with no new remote assets.
