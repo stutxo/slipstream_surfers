@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base href="/">
+  <title>Slipstream tunnel — local visual check</title>
+</head>
+<body>
+  <canvas id="game" aria-label="Slipstream tunnel visual check"></canvas>
+  <div id="ui"></div>
+  <aside id="qa-tools" aria-label="Local tunnel visual checks">
+    <strong>Local visual check</strong>
+    <div class="qa-actions">
+      <button type="button" id="full">Full tunnel</button>
+      <button type="button" id="warning">3 seconds to exit</button>
+      <button type="button" id="shield">Exit shield</button>
+      <button type="button" id="normal">Normal route</button>
+      <button type="button" id="transition">Run transition</button>
+      <button type="button" id="pause-check">Pause / resume</button>
+    </div>
+    <output id="qa-state" aria-live="polite">Loading the real game renderer…</output>
+  </aside>
+  <script type="module">
+    // This fixture is a separate Vite development entry and is not part of dist/.
+    // It uses the production renderer, simulation, UI and CSS without browser injection.
+    import * as THREE from 'three';
+    import sourceHtml from '/index.html?raw';
+    import { World } from '/src/view/world.ts';
+    import { createBitcoinCore } from '/src/view/models.ts';
+    import { Sim } from '/src/sim/sim.ts';
+    import { UI } from '/src/ui.ts';
+    import { OB, trainLength } from '/src/config.ts';
+
+    const sourceDocument = new DOMParser().parseFromString(sourceHtml, 'text/html');
+    for (const original of sourceDocument.querySelectorAll('style')) {
+      const style = document.createElement('style');
+      style.textContent = original.textContent;
+      document.head.append(style);
+    }
+    const fixtureStyle = document.createElement('style');
+    fixtureStyle.textContent = `
+      #qa-tools{position:fixed;z-index:100;left:10px;right:10px;bottom:8px;padding:10px 12px;background:#101616f2;border:1px solid #6c9f96;border-radius:4px;font:10px/1.5 monospace;color:#fff}
+      #qa-tools strong{font-weight:400;color:#9ce9d8}
+      .qa-actions{display:flex;flex-wrap:wrap;gap:6px;margin:5px 0}
+      #qa-tools button{background:#243f38;border:1px solid #74b09f;border-radius:3px;padding:5px 8px;font:inherit}
+      #qa-state{display:block;color:#d0e9e3;font-variant-numeric:tabular-nums}
+      .route-status{bottom:125px}
+      #ui{pointer-events:none}.hud-left{pointer-events:auto}
+      @media(max-width:600px){.route-status{bottom:160px}#qa-tools{font-size:9px}}
+    `;
+    document.head.append(fixtureStyle);
+
+    const canvas = document.getElementById('game');
+    const status = document.getElementById('qa-state');
+    const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.setPixelRatio(Math.min(devicePixelRatio || 1,2));
+    const world = new World(createBitcoinCore(),{shadowSize:1024});
+    world.player.setCharacter('ifd');
+    const sim = new Sim(12);
+    let running = false;
+    let phase = 'Full tunnel';
+    const ui = new UI(document.getElementById('ui'),{
+      play(){running=true;},resume(){running=true;},pause(){running=!running;},
+      restart(){reset('transition');},home(){reset('full');},
+      toggleMute(){},langChanged(){},selectCharacter(){}
+    },true);
+    ui.show('play');
+    const resize = () => {
+      renderer.setSize(innerWidth,innerHeight,false);
+      world.resize(innerWidth,innerHeight);
+    };
+    addEventListener('resize',resize);
+    resize();
+
+    function reset(mode) {
+      running = mode === 'transition';
+      sim.noSpawn = true;
+      sim.reset(12,false);
+      sim.clearWorld();
+      sim.speedOverride = 22;
+      sim.start();
+      world.resetScenery();
+      const obstacle = (kind,lane,d,cars=1,variant=0) => sim.addOb({
+        kind,lane,d0:d,d1:d+(kind==='train'?trainLength(cars):OB[kind].depth),cars,variant
+      });
+      // Different silhouettes remain in sight before, during and after expiry.
+      obstacle('low',1,18);
+      obstacle('train',0,28,3,2);
+      obstacle('overhead',1,42);
+      obstacle('ramp',2,45);
+      obstacle('train',2,52,3,2);
+      obstacle('hurdle',1,80);
+      obstacle('low',1,112);
+      obstacle('train',0,124,2,3);
+      obstacle('overhead',2,138);
+      for(let d=6;d<160;d+=4)sim.addCoin(1,d,.85);
+      if(mode==='full') {sim.power.slipstream=9;phase='Full tunnel';}
+      else if(mode==='warning'||mode==='transition') {sim.power.slipstream=3;phase=mode==='warning'?'3 seconds to exit':'Running transition';}
+      else if(mode==='shield') {
+        sim.power.slipstream=.001;
+        sim.update(1/120); // Reach the real expiry path, including its safety timer.
+        phase='Exit shield';
+      } else {phase='Normal route';}
+      sim.speed=22;
+      sim.drainEvents();
+      ui.show('play');
+    }
+    for(const id of ['full','warning','shield','normal','transition'])document.getElementById(id).addEventListener('click',()=>reset(id));
+    document.getElementById('pause-check').addEventListener('click',()=>{running=!running;});
+    addEventListener('keydown',event=>{
+      if(event.key==='ArrowLeft')sim.left();
+      else if(event.key==='ArrowRight')sim.right();
+      else if(event.key==='ArrowUp'||event.key===' ')sim.jump();
+      else if(event.key==='ArrowDown')sim.down();
+      else if(event.key.toLowerCase()==='p')running=!running;
+      else return;
+      event.preventDefault();
+    });
+    reset('full');
+    let previous=performance.now();
+    function frame(now) {
+      const dt=Math.min(.05,(now-previous)/1000);previous=now;
+      if(running)sim.update(dt);
+      const events=sim.drainEvents();
+      for(const event of events)world.event(event);
+      world.player.update(sim,dt,events);
+      world.sync(sim,dt,false);
+      ui.hud(Math.floor(sim.score),sim.coins,sim.mult,sim.power);
+      ui.status(sim.d,sim.power.slipstream,sim.slipstreamExitGrace);
+      const description=`${phase} · ${running?'running':'paused'} · tunnel ${sim.power.slipstream.toFixed(2)} s · exit shield ${(sim.slipstreamExitGrace||0).toFixed(2)} s · ${sim.alive?'alive':'collision'} · ${sim.d.toFixed(1)} m`;
+      status.textContent=description;
+      canvas.setAttribute('aria-label',description);
+      renderer.render(world.scene,world.camera);
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>

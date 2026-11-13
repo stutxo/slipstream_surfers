@@ -3,7 +3,7 @@
 // and the runner is a small box. Plain interval checks, so the result is the same every time.
 import {
   PLAYER, GRAVITY, JUMP_V, SUPER_JUMP_V, OB, laneX, speedAt, POWER_TIME, MAGNET_RANGE, VIEW_AHEAD, LANE_COUNT,
-  trainLength, moverFront, moverSpan, CPFP_SPEED,
+  trainLength, moverFront, moverSpan, CPFP_SPEED, SLIPSTREAM_EXIT_GRACE,
 } from '../config';
 import type { Ob, Coin, Power, SimEvent, ObKind, PowerKind, Hint } from './types';
 import { Track, type Spec } from './track';
@@ -44,6 +44,8 @@ export class Sim {
   coinStreakT = 0;
   score = 0;
   power: Record<PowerKind, number> = { magnet: 0, shoes: 0, double: 0, slipstream: 0, helmet: 0, cpfp: 0 };
+  slipstreamExitGrace = 0;
+  private slipstreamBypassed = new Set<number>();
   baseMult = 1;
   // world
   obs: Ob[] = [];
@@ -81,8 +83,9 @@ export class Sim {
       lane: 1, fromX: 0, laneT: 1, x: 0, y: 0, vy: 0, grounded: true, groundY: 0, slideT: 0, fastFall: false,
       slideQueued: false, coyoteT: 0, jumpBufT: 0, d: 0, speed: 0, alive: true, running: false, time: 0,
       sinceStumble: 99, stumbleSlow: 0, ignoreId: -1, ignoreT: 0, airTime: 0, peakY: 0, coins: 0, coinStreak: 0,
-      coinStreakT: 0, score: 0, baseMult: 1,
+      coinStreakT: 0, score: 0, baseMult: 1, slipstreamExitGrace: 0,
     });
+    this.slipstreamBypassed.clear();
     this.power = { magnet: 0, shoes: 0, double: 0, slipstream: 0, helmet: 0, cpfp: 0 };
     this.track.reset(seed, tutorial);
     if (!this.noSpawn) this.track.ensure(VIEW_AHEAD);
@@ -138,6 +141,8 @@ export class Sim {
     this.obs.length = 0;
     this.coinList.length = 0;
     this.powers.length = 0;
+    this.slipstreamExitGrace = 0;
+    this.slipstreamBypassed.clear();
   }
 
   // ------------------------------------------------------------------ input
@@ -222,6 +227,7 @@ export class Sim {
     this.sinceStumble += dt;
     this.stumbleSlow = Math.max(0, this.stumbleSlow - dt);
     this.ignoreT = Math.max(0, this.ignoreT - dt);
+    this.slipstreamExitGrace = Math.max(0, this.slipstreamExitGrace - dt);
     this.coyoteT = Math.max(0, this.coyoteT - dt);
     this.jumpBufT = Math.max(0, this.jumpBufT - dt);
     this.coinStreakT = Math.max(0, this.coinStreakT - dt);
@@ -230,7 +236,10 @@ export class Sim {
     for (const k of Object.keys(POWER_TIME) as PowerKind[]) {
       if (this.power[k] > 0) {
         this.power[k] = Math.max(0, this.power[k] - dt);
-        if (this.power[k] === 0) this.events.push({ type: 'powerEnd', kind: k });
+        if (this.power[k] === 0) {
+          if (k === 'slipstream') this.slipstreamExitGrace = SLIPSTREAM_EXIT_GRACE;
+          this.events.push({ type: 'powerEnd', kind: k });
+        }
       }
     }
     // speed
@@ -325,16 +334,20 @@ export class Sim {
 
   private collide(px: number, py: number, pd: number, ph: number) {
     const h = this.bodyH;
-    if (this.power.slipstream > 0) {
-      // The private tunnel bypasses policy hazards. If the tunnel expires inside a packet,
-      // finish passing that packet instead of materializing into its solid side.
-      for (const o of this.obs) if (this.overlaps(o, this.x, this.y, this.d, h)) {
-        this.ignoreId = o.id;
-        this.ignoreT = Math.max(this.ignoreT, (o.d1 - this.d + 1) / Math.max(1, this.speed) + 0.25);
+    if (this.power.slipstream > 0 || this.slipstreamExitGrace > 0) {
+      // Keep every solid currently being bypassed safe until the runner clears it.
+      // A single ignored ID cannot cover intersecting packets or a mid-lane transition.
+      for (const o of this.obs) {
+        if (this.overlaps(o, this.x, this.y, this.d, h)) this.slipstreamBypassed.add(o.id);
+        else this.slipstreamBypassed.delete(o.id);
       }
       return;
     }
     for (const o of this.obs) {
+      if (this.slipstreamBypassed.has(o.id)) {
+        if (this.overlaps(o, this.x, this.y, this.d, h)) continue;
+        this.slipstreamBypassed.delete(o.id);
+      }
       if (o.d0 > this.d + 8 || o.d1 < this.d - 8) continue;
       if (o.id === this.ignoreId && this.ignoreT > 0) continue;
       if (!this.overlaps(o, this.x, this.y, this.d, h)) continue;
@@ -481,6 +494,7 @@ export class Sim {
       const x = laneX(p.lane);
       if (Math.abs(p.d - this.d) < 1.0 && Math.abs(x - this.x) < 1.1 && p.y > this.y - 0.5 && p.y < this.y + h + 0.6) {
         this.power[p.kind] = POWER_TIME[p.kind];
+        if (p.kind === 'slipstream') this.slipstreamExitGrace = 0;
         this.events.push({ type: 'power', kind: p.kind, x, y: p.y });
         this.freePowers.push(p);
         this.powers.splice(i, 1);
@@ -500,7 +514,10 @@ export class Sim {
   private recycle() {
     const behind = this.d - 14;
     for (let i = this.obs.length - 1; i >= 0; i--) {
-      if (this.obs[i].d1 < behind) this.freeObs.push(this.obs.splice(i, 1)[0]);
+      if (this.obs[i].d1 < behind) {
+        this.slipstreamBypassed.delete(this.obs[i].id);
+        this.freeObs.push(this.obs.splice(i, 1)[0]);
+      }
     }
     for (let i = this.coinList.length - 1; i >= 0; i--) {
       if (this.coinList[i].d < behind) this.freeCoins.push(this.coinList.splice(i, 1)[0]);
@@ -521,6 +538,7 @@ export class Sim {
       lane: this.lane, x: +this.x.toFixed(3), y: +this.y.toFixed(3), vy: +this.vy.toFixed(2), d: +this.d.toFixed(2),
       speed: +this.speed.toFixed(2), grounded: this.grounded, sliding: this.sliding, alive: this.alive, running: this.running,
       coins: this.coins, score: Math.floor(this.score), mult: this.mult, power: { ...this.power },
+      slipstreamExitGrace: +this.slipstreamExitGrace.toFixed(3),
       sinceStumble: +this.sinceStumble.toFixed(2), groundY: +this.groundY.toFixed(2),
       obs: this.obs.length, coinCount: this.coinList.length, powers: this.powers.length,
       created: { ...this.created }, pooled: { obs: this.freeObs.length, coins: this.freeCoins.length, powers: this.freePowers.length },

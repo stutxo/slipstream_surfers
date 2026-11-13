@@ -7,7 +7,7 @@ Original procedural assets are in `src/view/models.ts`, `src/view/player.ts`, an
 - Mining-rack convoys with graphite cabinets, ASIC cooling fans, heat-sink grills, orange roof rails and cyan direction markers.
 - Packet convoys: full blocks, giant JPEG inscriptions and rejection gates.
 - Grumpy router checkpoints, fee charts, scanning eyes, surveillance drone with magnifier.
-- Bitcoin sats, three fiber-optic cable lanes, server racks, Slipstream wireframe tunnel and mining machine.
+- Bitcoin sats, three fiber-optic cable lanes, server racks, Slipstream wireframe tunnel and two mining banks framing a clear view of all three lanes.
 
 Collision dimensions match the retained upstream simulation. The models are Three.js geometry with local canvas textures; they need no remote assets.
 

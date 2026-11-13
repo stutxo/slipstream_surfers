@@ -158,7 +158,7 @@ async function main() {
       case 'bump': audio.bump(); break;
       case 'land': if (ev.fall > 0.5) audio.land(); break;
       case 'coin': audio.coin(ev.streak); break;
-      case 'power': audio.power(); ui.toast(t(ev.kind)); ui.flash('power'); break;
+      case 'power': audio.power(); ui.toast(ev.kind === 'slipstream' ? 'Slipstream · 9s hazard protection' : t(ev.kind)); ui.flash('power'); break;
       case 'powerEnd': audio.powerEnd(); break;
       case 'level': audio.level(); ui.toast(t('mult') + ' ×' + ev.mult); break;
       case 'stumble': audio.stumble(); ui.flash('hit'); ui.toast(t('careful'), 1600); break;
@@ -232,8 +232,8 @@ async function main() {
     }
     audio.rumble(rumble);
     ui.hud(Math.floor(sim.score), sim.coins, sim.mult, sim.power);
-    ui.status(sim.d, sim.power.slipstream > 0);
-    canvas.setAttribute('aria-label', `Slipstream Surfers: ${state}, ${Math.floor(sim.d)} metres, ${sim.coins} sats, lane ${sim.lane + 1}${sim.y > 2 ? ', on packet roof' : ''}${sim.power.slipstream > 0 ? ', private tunnel' : ''}, character ${characterInfo(selectedCharacter).name}`);
+    ui.status(sim.d, sim.power.slipstream, sim.slipstreamExitGrace);
+    canvas.setAttribute('aria-label', `Slipstream Surfers: ${state}, ${Math.floor(sim.d)} metres, ${sim.coins} sats, lane ${sim.lane + 1}${sim.y > 2 ? ', on packet roof' : ''}${sim.power.slipstream > 0 ? ', private tunnel' : ''}${sim.slipstreamExitGrace > 0 ? ', exit shield' : ''}, character ${characterInfo(selectedCharacter).name}`);
     if (draw) renderer.render(world.scene, world.camera);
   }
 

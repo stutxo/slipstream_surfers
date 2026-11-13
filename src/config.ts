@@ -52,6 +52,9 @@ export const CAR_GAP = 0.3;
 export const trainLength = (cars: number) => cars * CAR_LEN + (cars - 1) * CAR_GAP;
 
 export const POWER_TIME = { magnet: 10, shoes: 10, double: 12, slipstream: 9, helmet: 25, cpfp: 7 };
+// Reveal the exit early, then keep collisions disabled briefly while rejoining the public route.
+export const SLIPSTREAM_EXIT_WARNING = 3;
+export const SLIPSTREAM_EXIT_GRACE = 1.5;
 export const CPFP_SPEED = 1.22;
 export const MAGNET_RANGE = 16;
 export const VIEW_AHEAD = 210;

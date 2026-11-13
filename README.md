@@ -8,7 +8,7 @@ Live game: [Slipstream Surfers](https://slipstream-surfers.xenocardo.chatgpt.sit
 
 Choose from four runners on the start screen: Transaction, PortlandHODL, IFD, or Peter Todd. The menu previews the actual animated 3D model; the choice is remembered locally and used for every run. All runners share the same movement, collisions and power-ups.
 
-You are a non-standard transaction. Change cables, jump fees and checkpoints, slide beneath scanning eyes, use ramps to surf connected mining-rack and transaction-packet roofs, and collect sats. Slipstream opens a temporary private route and loses the surveillance drone. The scene is an arcade metaphor; no real transactions are submitted.
+You are a non-standard transaction. Change cables, jump fees and checkpoints, slide beneath scanning eyes, use ramps to surf connected mining-rack and transaction-packet roofs, and collect sats. Slipstream grants 9 seconds of collision immunity and loses the surveillance drone. Sats and scoring continue normally; the miner has no separate arrival reward. The route stays visible throughout, a 3-second exit countdown gives warning, and a 1.5-second exit shield lets you line up the next move. Any obstacle already overlapping during protection stays harmless until you clear it. The scene is an arcade metaphor; no real transactions are submitted.
 
 - Arrow keys / WASD: switch lanes, jump and slide. Space jumps.
 - P / Esc: pause. M: sound.

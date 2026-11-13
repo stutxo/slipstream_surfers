@@ -13,7 +13,7 @@ try {
   const { Sim } = require(join(out, 'src/sim/sim.js'));
   const { RoutePilot } = require(join(out, 'tests/fixtures/route.js'));
   const { solve } = require(join(out, 'src/sim/track.js'));
-  const { speedAt, OB, trainLength, SPEED, CPFP_SPEED } = require(join(out, 'src/config.js'));
+  const { speedAt, OB, trainLength, SPEED, CPFP_SPEED, SLIPSTREAM_EXIT_GRACE, PLAYER } = require(join(out, 'src/config.js'));
   const fresh = () => {
     const s = new Sim(1); s.noSpawn = true; s.reset(1, false); s.clearWorld(); s.speedOverride = 12; s.start(); return s;
   };
@@ -36,6 +36,58 @@ try {
   runTo(tunnel, 145); assert(tunnel.alive, 'Slipstream expires safely even inside a packet');
   assert.equal(tunnel.power.slipstream, 0);
   ob(tunnel, 'low', 150); runTo(tunnel, 155); assert.equal(tunnel.alive, false, 'collision returns after the private tunnel');
+
+  const advanceTo = (s, time, dt) => {
+    while (s.alive && s.time < time - 1e-8) s.update(Math.min(dt, time - s.time));
+  };
+  for (const dt of [1 / 25, 1 / 30, 1 / 60, 1 / 120]) for (const boosted of [false, true]) {
+    const label = `${Math.round(1 / dt)} fps${boosted ? ' + CPFP' : ''}`;
+    const exit = fresh(); exit.speedOverride = SPEED.max;
+    if (boosted) exit.power.cpfp = 999;
+    const speed = SPEED.max * (boosted ? CPFP_SPEED : 1);
+    exit.power.slipstream = .08;
+    // This scanner is first touched after the tunnel ends, so the old single-ID
+    // workaround cannot protect it. The new exit window must cover the transition.
+    ob(exit, 'overhead', speed * .2 + PLAYER.halfD);
+    ob(exit, 'low', speed * 2 + PLAYER.halfD);
+    while (exit.power.slipstream > 0) exit.update(dt);
+    assert(exit.slipstreamExitGrace > SLIPSTREAM_EXIT_GRACE - dt - .01, 'full exit grace begins on expiry: ' + label);
+    advanceTo(exit, .3, dt);
+    assert(exit.alive && exit.slipstreamExitGrace > 0, 'scanner just after exit is safe: ' + label);
+    advanceTo(exit, 1.75, dt);
+    assert(exit.alive && exit.slipstreamExitGrace === 0, 'exit grace ends on schedule: ' + label);
+    assert.equal(exit.drainEvents().filter(e => e.type === 'powerEnd' && e.kind === 'slipstream').length, 1, 'expiry event fires once');
+    advanceTo(exit, 2.1, dt);
+    assert.equal(exit.alive, false, 'a new obstacle after grace is solid: ' + label);
+
+    const overlaps = fresh(); overlaps.speedOverride = SPEED.max;
+    if (boosted) overlaps.power.cpfp = 999;
+    overlaps.power.slipstream = .08;
+    // Several solids overlap at expiry, including an oncoming convoy. Every
+    // already-bypassed solid stays safe until physically cleared, even beyond grace.
+    ob(overlaps, 'train', .1, 1, speed * 4);
+    ob(overlaps, 'train', .2, 1, speed * 6);
+    overlaps.addOb({ kind: 'mtrain', lane: 1, d0: speed * .03, d1: speed * .03 + trainLength(20), cars: 20 });
+    ob(overlaps, 'low', speed * 7 + PLAYER.halfD);
+    advanceTo(overlaps, 6.2, dt);
+    assert(overlaps.alive && overlaps.slipstreamExitGrace === 0, 'multiple long/moving packets clear safely: ' + label);
+    advanceTo(overlaps, 7.1, dt);
+    assert.equal(overlaps.alive, false, 'past packet immunity does not protect later hazards: ' + label);
+  }
+
+  for (const cleanup of ['reset', 'clearWorld']) {
+    const clean = fresh(); clean.power.slipstream = .04; ob(clean, 'train', .1, 1, 100);
+    clean.update(.08); assert(clean.slipstreamExitGrace > 0);
+    if (cleanup === 'reset') { clean.reset(1, false); clean.start(); }
+    else clean.clearWorld();
+    assert.equal(clean.slipstreamExitGrace, 0, cleanup + ' clears pending exit protection');
+    ob(clean, 'train', clean.d + 3); runTo(clean, clean.d + 8);
+    assert.equal(clean.alive, false, cleanup + ' clears bypassed obstacle state');
+  }
+
+  const exitHelmet = fresh(); exitHelmet.power.slipstream = .04; exitHelmet.power.helmet = 25;
+  ob(exitHelmet, 'overhead', 2); advanceTo(exitHelmet, .5, 1 / 60);
+  assert(exitHelmet.alive && exitHelmet.power.helmet > 24, 'exit protection does not consume a mining helmet');
 
   const roof = fresh(); ob(roof, 'ramp', 10); ob(roof, 'train', 17, 1, trainLength(3)); runTo(roof, 25);
   assert(roof.alive && roof.grounded && Math.abs(roof.y - OB.train.yt) < 0.01, 'ramps still reach real walkable packet roofs');
@@ -125,5 +177,5 @@ try {
     }
     assert(s.alive && s.d >= 270, 'opening survives CPFP (' + CPFP_SPEED + 'x) at dt=' + dt);
   }
-  console.log(JSON.stringify({ ok: true, checks: 'collision, powers, roof support, early density, orphan ramps, 20 real generated routes, CPFP opening', routeRuns, generatedRoutes: routes.length, earlyAverages: Object.fromEntries(['convoys', 'racks', 'ramps'].map(k => [k, opening.reduce((sum, o) => sum + o[k], 0) / opening.length])) }, null, 2));
+  console.log(JSON.stringify({ ok: true, checks: 'collision, powers, fair tunnel exit at 25/30/60/120 fps with CPFP, roof support, early density, orphan ramps, 20 real generated routes, CPFP opening', routeRuns, generatedRoutes: routes.length, earlyAverages: Object.fromEntries(['convoys', 'racks', 'ramps'].map(k => [k, opening.reduce((sum, o) => sum + o[k], 0) / opening.length])) }, null, 2));
 } finally { rmSync(out, { recursive: true, force: true }); }

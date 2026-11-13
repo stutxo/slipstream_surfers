@@ -7,7 +7,7 @@ import { Instanced } from './pools';
 import { Fx } from './fx';
 import { PlayerView } from './player';
 import { trackTexture, pavingTexture, groundTexture, skyTexture, glowTexture, powerTexture, rampTexture, HORIZON } from './textures';
-import { LANE_W, laneX, CAR_LEN, CAR_GAP, VIEW_AHEAD, OB } from '../config';
+import { LANE_W, laneX, CAR_LEN, CAR_GAP, VIEW_AHEAD, OB, SLIPSTREAM_EXIT_GRACE } from '../config';
 import type { Sim } from '../sim/sim';
 import type { SimEvent, PowerKind, Ob } from '../sim/types';
 
@@ -79,7 +79,7 @@ export class World {
     this.buildGround();
     this.racks = new Instanced(serverRack(), 44, s, {cast:true,receive:true,name:'bitcoin-node'});
     this.drone=droneModel();this.drone.scale.setScalar(.7);s.add(this.drone);
-    this.miner=minerModel();s.add(this.miner);this.miner.position.set(0,0,-145);this.miner.scale.setScalar(2.2);
+    this.miner=minerModel();s.add(this.miner);this.miner.position.set(0,0,-145);
     this.tunnel = this.buildNetworkTunnel();
     s.add(this.tunnel);
 
@@ -258,7 +258,7 @@ export class World {
     for (const o of sim.obs) {
       if (o.d0 > pd + VIEW_AHEAD || o.d1 < pd - 12) continue;
       const x = laneX(o.lane);
-      if(sim.power.slipstream>0 && (o.kind==='low'||o.kind==='hurdle'||o.kind==='overhead'||((o.kind==='train'||o.kind==='mtrain')&&o.variant%4===3)))continue;
+      // Protected hazards stay visible, including those beyond the tunnel exit.
       if (o.kind === 'train' || o.kind === 'mtrain') {
         for (let c = 0; c < o.cars; c++) {
           const dc = o.d0 + c * (CAR_LEN + CAR_GAP) + CAR_LEN / 2;
@@ -331,14 +331,16 @@ export class World {
       }
     }
     this.racks.end();
-    this.tunnelStrength+=(Number(sim.power.slipstream>0)-this.tunnelStrength)*Math.min(1,dt*3);
+    this.tunnelStrength+=(Number(sim.power.slipstream>0 || sim.slipstreamExitGrace>0)-this.tunnelStrength)*Math.min(1,dt*3);
     this.latticeMat.opacity = .28 + .28 * this.tunnelStrength;
     this.latticeMat.color.setRGB(1 - .18 * this.tunnelStrength, 1, 1 - .06 * this.tunnelStrength);
     this.nodeMat.opacity = .8 + .2 * this.tunnelStrength;
     this.tunnel.position.z = pd % 96;
-    this.miner.visible=sim.power.slipstream>0;
-    // Approach the miner as the private-route power-up expires.
-    this.miner.position.z=-Math.max(12,12+sim.power.slipstream*12);
+    this.miner.visible=sim.power.slipstream>0 || sim.slipstreamExitGrace>0;
+    // Pass between the mining banks during the exit shield, with an open view ahead.
+    this.miner.position.z=sim.power.slipstream>0
+      ? -12-sim.power.slipstream*12
+      : -12+(SLIPSTREAM_EXIT_GRACE-sim.slipstreamExitGrace)*sim.speed;
     this.drone.visible=!menu&&this.tunnelStrength<.5;
     this.drone.position.set(sim.x*.55-1.2,1.8+Math.sin(this.time*3)*.22,sim.alive?(sim.sinceStumble<4.5?1.5:3.3):.5);
     this.drone.rotation.set(.1,-.2+.2*Math.sin(this.time*2),Math.sin(this.time*4)*.08);

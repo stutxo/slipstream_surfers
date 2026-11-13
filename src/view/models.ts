@@ -219,9 +219,21 @@ export function droneModel(){
   return merged(g,'surveillance-drone');
 }
 export function minerModel(){
-  const g=new THREE.Group();box(g,7.6,5.6,2,0,2.8,0,ink);
-  for(const x of [-2.4,0,2.4])for(const y of [1.5,3.6]){const ring=new THREE.Mesh(new THREE.TorusGeometry(.77,.12,8,24),orange);ring.position.set(x,y,1.05);g.add(ring);for(let k=0;k<5;k++){const blade=box(g,.16,1.3,.08,x,y,1.03,metal);blade.rotation.z=k*Math.PI/5;}sphere(g,.16,x,y,1.15,cyan);}
-  sign(g,'MINER',6.8,.7,0,6.1,1.03,'#ffbe63','#152c3b','DIRECT SUBMISSION');
+  const g=new THREE.Group();
+  // The mining banks sit outside all three lanes. Nothing spans the road or
+  // its sightline, so the runner can read the next obstacle through the exit.
+  for(const side of [-1,1]) {
+    const x=side*5.35;
+    box(g,2.4,5.6,2,x,2.8,0,ink);
+    for(const y of [1.5,3.6]) {
+      const ring=new THREE.Mesh(new THREE.TorusGeometry(.77,.12,8,24),orange);
+      ring.position.set(x,y,1.05);g.add(ring);
+      for(let k=0;k<5;k++){const blade=box(g,.16,1.3,.08,x,y,1.03,metal);blade.rotation.z=k*Math.PI/5;}
+      sphere(g,.16,x,y,1.15,cyan);
+    }
+    box(g,.06,5.8,.08,x-side*1.22,2.9,1.08,cyan);
+    sign(g,'MINER',2.4,.7,x,6.1,1.03,'#ffbe63','#152c3b','DIRECT SUBMISSION');
+  }
   return merged(g,'miner');
 }
 export function createBitcoinCore():GLTF {

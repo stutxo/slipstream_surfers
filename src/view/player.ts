@@ -362,7 +362,8 @@ export class PlayerView {
     this.model.scale.set(1 + sq * 0.5 + (sim.sliding ? 0.12 : 0), sim.sliding ? 0.43 : 1 - sq, 1 + sq * 0.5);
     this.packet.shell.rotation.z = Math.sin(phase) * (sim.grounded && sim.alive ? 0.025 : 0);
     this.packet.eyebrows.forEach((b, i) => { b.position.y = Number(b.userData.restY); b.rotation.z = (i ? 1 : -1) * (this.stumbleT > 0 ? -0.25 : 0.12); });
-    this.helmet.visible = this.shield.visible = p.helmet > 0;
+    this.helmet.visible = p.helmet > 0;
+    this.shield.visible = p.helmet > 0 || sim.slipstreamExitGrace > 0;
     if(this.tiara) this.tiara.visible = !(this.character === 'ifd' && p.helmet > 0);
     this.shield.rotation.z = this.time;
     this.shield.position.y = 0.75 + Math.sin(this.time * 3) * 0.1;

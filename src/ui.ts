@@ -1,7 +1,7 @@
 // The DOM layer: title screen, HUD, pause and result screens. Plain elements, no framework.
 import { t, getLang, setLang, LANGS, LANG_LABEL, type Key } from './i18n';
 import type { PowerKind } from './sim/types';
-import { POWER_TIME } from './config';
+import { POWER_TIME, SLIPSTREAM_EXIT_WARNING } from './config';
 import { CHARACTERS, DEFAULT_CHARACTER, characterInfo, type CharacterId } from './characters';
 
 export type Screen = 'start' | 'play' | 'pause' | 'over';
@@ -220,9 +220,16 @@ export class UI {
     }
   }
 
-  status(distance: number, privateRoute: boolean) {
-    this.el['route-status'].innerHTML = `${privateRoute ? 'PRIVATE ROUTE <i class="private"></i> MINER AHEAD' : 'PUBLIC MEMPOOL <i></i> SURVEILLANCE ACTIVE'} <b>${Math.floor(distance)} m</b>`;
-    this.root.dataset.route = privateRoute ? 'private' : 'public';
+  status(distance: number, slipstreamSeconds: number, exitGrace: number) {
+    const privateRoute = slipstreamSeconds > 0;
+    const exiting = privateRoute && slipstreamSeconds <= SLIPSTREAM_EXIT_WARNING;
+    const label = privateRoute
+      ? exiting ? `EXIT IN ${Math.ceil(slipstreamSeconds)}s <i class="private"></i> CHOOSE YOUR LANE`
+        : 'PRIVATE ROUTE <i class="private"></i> HAZARD PROTECTION'
+      : exitGrace > 0 ? `EXIT SHIELD ${exitGrace.toFixed(1)}s <i class="private"></i> PREPARE TO DODGE`
+        : 'PUBLIC MEMPOOL <i></i> SURVEILLANCE ACTIVE';
+    this.el['route-status'].innerHTML = `${label} <b>${Math.floor(distance)} m</b>`;
+    this.root.dataset.route = privateRoute ? (exiting ? 'exiting' : 'private') : exitGrace > 0 ? 'shield' : 'public';
   }
 
   hint(text: string, ms = 2200) {
