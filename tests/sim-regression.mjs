@@ -7,12 +7,27 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { checkSwipes } from './swipes.mjs';
+import { checkLiveChain } from './live-chain.mjs';
 const require = createRequire(import.meta.url);
 const out = mkdtempSync(join(tmpdir(), 'slipstream-sim-'));
 try {
-  execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', 'src/input.ts', 'src/config.ts', 'src/sim/sim.ts', 'tests/fixtures/route.ts', 'src/sim/track.ts', 'src/sim/rng.ts', 'src/sim/types.ts', '--target', 'ES2020', '--module', 'commonjs', '--moduleResolution', 'node', '--outDir', out, '--rootDir', '.', '--skipLibCheck', '--strict'], { stdio: 'inherit' });
+  execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', 'src/input.ts', 'src/live-chain.ts', 'src/block-course.ts', 'src/config.ts', 'src/sim/sim.ts', 'tests/fixtures/route.ts', 'src/sim/track.ts', 'src/sim/rng.ts', 'src/sim/types.ts', '--target', 'ES2020', '--module', 'commonjs', '--moduleResolution', 'node', '--outDir', out, '--rootDir', '.', '--skipLibCheck', '--strict'], { stdio: 'inherit' });
   checkSwipes(require(join(out, 'src/input.js')).bindInput);
-  const { Sim } = require(join(out, 'src/sim/sim.js'));
+  await checkLiveChain(require(join(out, 'src/live-chain.js')).startLiveChain);
+  const { Sim, BLOCK_BONUS_SECONDS } = require(join(out, 'src/sim/sim.js'));
+  const { blockCourseSeed } = require(join(out, 'src/block-course.js'));
+  const blockRoute = (hash, hints) => {
+    const seed = blockCourseSeed(hash);
+    const game = new Sim(seed);
+    game.reset(seed, hints);
+    game.track.ensure(1400);
+    return game.obs.filter(ob => ob.d0 > 275).map(({kind, lane, d0, variant}) => [kind, lane, d0, variant]);
+  };
+  const hash = '0'.repeat(56) + 'a23b7c91';
+  const generated = blockRoute(hash, true);
+  assert(generated.length > 0);
+  assert.deepEqual(blockRoute(hash, false), generated, 'the same block replays the course with or without tutorial hints');
+  assert.notDeepEqual(blockRoute(hash.slice(0,-1) + '2', false), generated, 'different block seeds generate different courses');
   const { RoutePilot } = require(join(out, 'tests/fixtures/route.js'));
   const { solve } = require(join(out, 'src/sim/track.js'));
   const { speedAt, OB, trainLength, SPEED, CPFP_SPEED, SLIPSTREAM_EXIT_GRACE, PLAYER } = require(join(out, 'src/config.js'));
@@ -42,6 +57,43 @@ try {
   const advanceTo = (s, time, dt) => {
     while (s.alive && s.time < time - 1e-8) s.update(Math.min(dt, time - s.time));
   };
+  const liveBlock = fresh({ set: 3 }), offline = fresh({ set: 3 });
+  assert.equal(new Sim(1).startBlockBonus(900000), false, 'the title screen cannot earn a bonus');
+  assert.equal(liveBlock.startBlockBonus(NaN), false);
+  assert(liveBlock.startBlockBonus(900000));
+  assert.equal(liveBlock.blockBonusSeconds, BLOCK_BONUS_SECONDS);
+  for (const sim of [liveBlock, offline]) {
+    sim.power.double = .5;
+    sim.addCoin(1, 1, .85);
+    advanceTo(sim, 1, 1 / 30);
+  }
+  const pickupBonus = 5 * 3 * 2;
+  assert(Math.abs(liveBlock.score - offline.score - pickupBonus) < 1e-8, 'only the pickup points double, including mission and batching multipliers');
+  assert.equal(liveBlock.coins, 1);
+  assert.deepEqual(liveBlock.missions.state, offline.missions.state);
+  const remaining = liveBlock.blockBonusSeconds;
+  assert.equal(liveBlock.startBlockBonus(900000), false);
+  assert.equal(liveBlock.startBlockBonus(899999), false);
+  assert.equal(liveBlock.blockBonusSeconds, remaining, 'duplicate and older blocks cannot refresh the window');
+  assert(liveBlock.startBlockBonus(900001));
+  assert.equal(liveBlock.blockBonusSeconds, BLOCK_BONUS_SECONDS, 'a second new height refreshes without stacking time');
+  for (const sim of [liveBlock, offline]) {
+    sim.power.slipstream = .2;
+    advanceTo(sim, BLOCK_BONUS_SECONDS + 2, 1 / 30);
+    sim.addCoin(1, sim.d + 1, .85);
+    sim.update(.1);
+  }
+  assert.equal(liveBlock.blockBonusSeconds, 0);
+  assert.equal(liveBlock.coins, 23, 'miner passage pays the ordinary 21 sats alongside two collected sats');
+  assert(Math.abs(liveBlock.score - offline.score - pickupBonus) < 1e-8, 'distance, miner passage and pickups after expiry add ordinary points');
+  assert(liveBlock.startBlockBonus(900002));
+  liveBlock.reset(1, false); liveBlock.clearWorld(); liveBlock.start();
+  assert.equal(liveBlock.blockBonusSeconds, 0);
+  assert.equal(liveBlock.startBlockBonus(900002), false, 'restarting cannot replay a block');
+  assert(liveBlock.startBlockBonus(900003));
+  ob(liveBlock, 'low', 3); runTo(liveBlock, 12);
+  assert(!liveBlock.alive && liveBlock.blockBonusSeconds === 0, 'live blocks preserve collisions and the bonus ends on a crash');
+  assert.equal(liveBlock.startBlockBonus(900004), false);
   for (const fps of [25, 30, 60, 120]) {
     const delivery = fresh();
     delivery.power.cpfp = .6; // Speed changes between power expiry and miner passage.
@@ -238,5 +290,5 @@ try {
     }
     assert(s.alive && s.d >= 270, 'opening survives CPFP (' + CPFP_SPEED + 'x) at dt=' + dt);
   }
-  console.log(JSON.stringify({ ok: true, checks: 'swipes, collision, powers, miner payout and clear tunnel exits at 25/30/60/120 fps with CPFP, rooftop pickups, mission persistence and multiplier cap, roof support, early density, orphan ramps, 20 generated routes, CPFP opening', routeRuns, generatedRoutes: routes.length, earlyAverages: Object.fromEntries(['convoys', 'racks', 'ramps'].map(k => [k, opening.reduce((sum, o) => sum + o[k], 0) / opening.length])) }, null, 2));
+  console.log(JSON.stringify({ ok: true, checks: 'live chain feed, live block pickup bonus, swipes, collision, powers, miner payout and clear tunnel exits at 25/30/60/120 fps with CPFP, rooftop pickups, mission persistence and multiplier cap, roof support, early density, orphan ramps, 20 generated routes, CPFP opening', routeRuns, generatedRoutes: routes.length, earlyAverages: Object.fromEntries(['convoys', 'racks', 'ramps'].map(k => [k, opening.reduce((sum, o) => sum + o[k], 0) / opening.length])) }, null, 2));
 } finally { rmSync(out, { recursive: true, force: true }); }

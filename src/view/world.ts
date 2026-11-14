@@ -30,6 +30,10 @@ const FLAT = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0),
 const GROUND_LEN = 300;
 const SIDEWALK_IN = 3.9; // inner edge of the sidewalk from the track centre
 const SIDEWALK_OUT = 7.4;
+const TRAFFIC_SLOTS = 64;
+const SAT_GLOW = new THREE.Color(1, .48, .08).multiplyScalar(.22);
+const BLOCK_SAT_GLOW = new THREE.Color(1, .72, .12).multiplyScalar(.65);
+const BLOCK_WIRE = new THREE.Color('#ffaa42');
 
 
 
@@ -45,6 +49,12 @@ export class World {
   private powerCards: Record<PowerKind, Instanced>;
   private scrollTex: THREE.Texture[] = [];
   private racks: Instanced;
+  private traffic = new THREE.InstancedMesh(
+    new THREE.BoxGeometry(.13, .09, .68),
+    new THREE.MeshBasicMaterial({ color: 0x52d5dc }),
+    2 * TRAFFIC_SLOTS,
+  );
+  private trafficPerSide = 0;
   private drone: THREE.Group;
   private miner: THREE.Group;
   private tunnel: THREE.Group;
@@ -78,6 +88,11 @@ export class World {
     s.add(this.sun, this.sun.target);
 
     this.buildGround();
+    this.traffic.name = 'live-mempool-traffic';
+    this.traffic.count = 0;
+    this.traffic.frustumCulled = false;
+    this.traffic.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    s.add(this.traffic);
     this.racks = new Instanced(serverRack(), 44, s, {cast:true,receive:true,name:'bitcoin-node'});
     this.drone=droneModel();this.drone.scale.setScalar(.7);s.add(this.drone);
     this.miner=minerModel();s.add(this.miner);this.miner.position.set(0,0,-145);
@@ -252,10 +267,29 @@ export class World {
     }
   }
 
+  setMempoolSize(vbytes: number | null) {
+    // A log scale keeps quiet periods visible and bounds the draw cost during spikes.
+    this.trafficPerSide = vbytes && vbytes > 0
+      ? Math.min(TRAFFIC_SLOTS, Math.ceil(9 * Math.log2(1 + vbytes / 1_000_000)))
+      : 0;
+    this.traffic.count = this.trafficPerSide * 2;
+  }
+
   sync(sim: Sim, dt: number, menu: boolean) {
     this.time += dt;
     const pd = sim.d;
     const zOf = (d: number) => -(d - pd);
+    // These packets travel in the side conduits, outside the playable lanes.
+    for (let i = 0; i < this.trafficPerSide; i++) {
+      const x = 4.25 + (i % 4) * .37;
+      const phase = i * 43.37 + pd + this.time * (3 + i % 3);
+      for (let side = 0; side < 2; side++) {
+        const z = (phase + side * 59) % 146 - 125;
+        m4.makeTranslation(side ? x : -x, .33, z);
+        this.traffic.setMatrixAt(i * 2 + side, m4);
+      }
+    }
+    if (this.trafficPerSide) this.traffic.instanceMatrix.needsUpdate = true;
     // scrolling ground
     for (const t of this.scrollTex) t.offset.y = (pd / (GROUND_LEN / t.repeat.y)) % 1;
     // obstacles
@@ -284,7 +318,8 @@ export class World {
     this.coins.begin();
     this.halos.begin();
     const camQ = this.camera.quaternion;
-    const gold = new THREE.Color(1.0, 0.48, 0.08).multiplyScalar(0.22);
+    const blockBonus = sim.alive && sim.blockBonusSeconds > 0;
+    const gold = blockBonus ? BLOCK_SAT_GLOW : SAT_GLOW;
     for (const c of sim.coinList) {
       if (c.d > pd + VIEW_AHEAD - 20) continue;
       const z = zOf(c.d);
@@ -292,7 +327,8 @@ export class World {
       q.setFromEuler(e.set(0, Math.sin(this.time * 2.2 + c.id * .43) * .35, 0));
       m4.compose(v.set(c.x, c.y, z), q, one);
       this.coins.add(m4);
-      m4.compose(v.set(c.x, c.y, z + 0.05), camQ, sc.set(.75, .75, .75));
+      const glowSize = blockBonus ? 1.15 : .75;
+      m4.compose(v.set(c.x, c.y, z + 0.05), camQ, sc.setScalar(glowSize));
       this.halos.add(m4, gold);
     }
     // power-up cards
@@ -340,6 +376,11 @@ export class World {
     this.tunnelStrength+=(Number(sim.power.slipstream>0 || sim.slipstreamExitGrace>0)-this.tunnelStrength)*Math.min(1,dt*3);
     this.latticeMat.opacity = .28 + .28 * this.tunnelStrength;
     this.latticeMat.color.setRGB(1 - .18 * this.tunnelStrength, 1, 1 - .06 * this.tunnelStrength);
+    if (blockBonus) {
+      this.latticeMat.opacity = .66;
+      this.latticeMat.color.copy(BLOCK_WIRE);
+    }
+    this.nodeMat.color.setHex(blockBonus ? 0xffc56f : 0xffffff);
     this.nodeMat.opacity = .8 + .2 * this.tunnelStrength;
     this.tunnel.position.z = pd % 96;
     this.miner.visible=sim.power.slipstream>0 || sim.slipstreamExitGrace>0;

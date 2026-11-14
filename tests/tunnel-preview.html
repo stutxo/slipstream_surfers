@@ -9,6 +9,7 @@
 <body>
   <canvas id="game" aria-label="Slipstream tunnel visual check"></canvas>
   <div id="ui"></div>
+  <small id="synthetic-label" hidden>Synthetic block preview</small>
   <aside id="qa-tools" aria-label="Local tunnel visual checks">
     <strong>Local visual check</strong>
     <div class="qa-actions">
@@ -32,6 +33,7 @@
     import { World } from '/src/view/world.ts';
     import { createBitcoinCore } from '/src/view/models.ts';
     import { Sim } from '/src/sim/sim.ts';
+    import { startLiveChain } from '/src/live-chain.ts';
     import { UI } from '/src/ui.ts';
     import { OB, trainLength } from '/src/config.ts';
     import { PACKET, KEY_EXPOSURE, RBF_WAR, QUANTUM_WATCH } from '/src/sim/obstacle-variants.ts';
@@ -51,6 +53,8 @@
       #qa-state{display:block;color:#d0e9e3;font-variant-numeric:tabular-nums}
       .route-status{bottom:125px}
       #ui{pointer-events:none}.hud-left{pointer-events:auto}
+      #synthetic-label{position:fixed;bottom:4px;left:8px;color:#c8c8c8;background:#111c;padding:3px 6px;font:10px monospace}
+      body.block-preview .route-status{bottom:28px}
       @media(max-width:600px){.route-status{bottom:160px}#qa-tools{font-size:9px}}
     `;
     document.head.append(fixtureStyle);
@@ -154,7 +158,45 @@
       else return;
       event.preventDefault();
     });
-    reset('full');
+    if (new URLSearchParams(location.search).has('block')) {
+      // A local network fixture feeds two linked tips to the real poller.
+      // The shipped page imports neither the mock response nor the test controls.
+      document.getElementById('qa-tools').hidden = true;
+      document.getElementById('synthetic-label').hidden = false;
+      document.body.classList.add('block-preview');
+      sim.reset(12, false);
+      sim.start();
+      let jumped = false, slid = false;
+      while (sim.alive && sim.d < 69) {
+        if (!jumped && sim.d >= 24.5) { sim.jump(); jumped = true; }
+        if (!slid && sim.d >= 48) { sim.down(); slid = true; }
+        sim.update(1/120);
+      }
+      if (!sim.alive) throw new Error('The runner missed the opening ramp');
+      phase = 'Synthetic block baseline';
+      let height = 900000;
+      const hash = h => h.toString(16).padStart(64,'0');
+      async function mockFetch(url) {
+        if (new URL(url).pathname === '/api/mempool') return Response.json({count:34722,vsize:16000000});
+        if (new URL(url).pathname !== '/api/blocks') throw new Error('Unexpected fixture endpoint: ' + url);
+        const h = height++;
+        return Response.json([{height:h,id:hash(h),previousblockhash:hash(h-1)}]);
+      }
+      const stop = startLiveChain(feed => {
+        ui.setChain(feed);
+        world.setMempoolSize(feed.status === 'live' ? feed.vsize : null);
+        running = feed.status === 'live';
+      }, tip => {
+        if (!sim.startBlockBonus(tip.height)) throw new Error('Block bonus did not start');
+        ui.setBlockBonus(sim.blockBonusSeconds, tip.height);
+        running = false;
+        phase = 'Synthetic successor block ' + tip.height;
+        stop();
+      }, mockFetch, 500);
+      window.addEventListener('pagehide', stop, {once:true});
+    } else {
+      reset('full');
+    }
     let previous=performance.now();
     function frame(now) {
       const dt=Math.min(.05,(now-previous)/1000);previous=now;
@@ -167,6 +209,7 @@
       world.player.update(sim,dt,events);
       world.sync(sim,dt,false);
       ui.hud(Math.floor(sim.score),sim.coins,sim.mult,sim.power);
+      ui.setBlockBonus(sim.blockBonusSeconds);
       ui.status(sim.d,sim.power.slipstream,sim.slipstreamExitGrace);
       const description=`${phase} · ${running?'running':'paused'} · tunnel ${sim.power.slipstream.toFixed(2)} s · exit shield ${(sim.slipstreamExitGrace||0).toFixed(2)} s · ${sim.alive?'alive':'collision'} · ${sim.d.toFixed(1)} m`;
       status.textContent=description;

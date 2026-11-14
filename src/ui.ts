@@ -3,10 +3,12 @@ import { t, getLang, setLang, LANGS, LANG_LABEL, type Key } from './i18n';
 import type { PowerKind } from './sim/types';
 import { POWER_TIME, SLIPSTREAM_EXIT_WARNING } from './config';
 import { CHARACTERS, DEFAULT_CHARACTER, characterInfo, type CharacterId } from './characters';
+import type { ChainFeed } from './live-chain';
 
 export type Screen = 'start' | 'play' | 'pause' | 'over';
 export interface UIHandlers {
   play(): void;
+  playBlock?(): void;
   resume(): void;
   pause(): void;
   restart(): void;
@@ -23,6 +25,7 @@ const ICON = {
   coin: '<span class="coin-ico"></span>',
 };
 const POWER_ICON: Record<PowerKind, string> = { magnet: '∪', shoes: '⇧', double: '×2', slipstream: '≋', helmet: '◠', cpfp: '»' };
+const compactCount = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
 
 export class UI {
   root: HTMLElement;
@@ -31,6 +34,8 @@ export class UI {
   private hintTimer = 0;
   private toastTimer = 0;
   private deliveryTimer = 0;
+  private blockSeconds = 0;
+  private blockHeight: number | null = null;
   touch = matchMedia('(pointer: coarse)').matches;
   private last = { score: -1, coins: -1, mult: -1, power: '' };
 
@@ -38,7 +43,7 @@ export class UI {
     this.root = root;
     root.innerHTML = `
       <div class="hud" id="hud">
-        <div class="network-label"><img class="brand-logo" src="./assets/brand/slipstream-logo.svg" alt="MARA Slipstream" width="455" height="109"><span>SURFERS / BITCOIN</span></div>
+        <div class="network-label"><img class="brand-logo" src="./assets/brand/slipstream-logo.svg" alt="MARA Slipstream" width="455" height="109"><div class="chain-hud" id="chain-hud" data-state="connecting"><i aria-hidden="true"></i><span id="chain-ticker">Mainnet · connecting</span></div></div>
         <div class="route-status" id="route-status">PUBLIC MEMPOOL <i></i> SURVEILLANCE ACTIVE</div>
         <div class="hud-left">
           <button class="icon-btn" id="btn-pause" aria-label="pause">${ICON.pause}</button>
@@ -47,6 +52,11 @@ export class UI {
         <div class="hud-right">
           <div class="score" id="score">0</div>
           <div class="hud-row"><span class="mult" id="mult">×1</span><span class="coins">${ICON.coin}<b id="coins">0</b></span></div>
+          <div class="block-bonus" id="block-bonus" hidden>
+            <div class="block-bonus-header"><i class="chain-cube" aria-hidden="true"></i><strong id="block-bonus-name">New block</strong></div>
+            <div>2× pickup score <b id="block-bonus-seconds"></b></div>
+          </div>
+          <span class="sr-only" id="block-alert" role="status"></span>
           <div class="powers" id="powers"></div>
         </div>
         <div class="hint" id="hint"></div>
@@ -71,6 +81,24 @@ export class UI {
             <p class="character-detail" id="character-detail" aria-live="polite"><b id="character-selected"></b><span id="character-subtitle"></span></p>
           </div>
           <button class="big" id="btn-play" data-k="play"></button>
+          <div id="start-chain">
+            <section class="chain-panel" id="chain-panel" aria-label="Bitcoin mainnet" data-state="connecting">
+              <div class="chain-header">
+                <span class="chain-title"><i class="chain-cube" aria-hidden="true"></i>Bitcoin mainnet</span>
+                <span class="chain-connection" id="chain-connection">Connecting</span>
+              </div>
+              <div class="chain-metrics">
+                <div><small>Latest block</small><strong id="chain-height">—</strong></div>
+                <div><small>Pending transactions</small><strong id="chain-pending">—</strong></div>
+                <a id="chain-source" href="https://mempool.space/" target="_blank" rel="noopener">mempool.space ↗</a>
+              </div>
+              <p>A block mined mid-run gives 2× pickup score for 21s.</p>
+              <div class="chain-launch">
+                <button type="button" id="btn-block-run" disabled>Surf this block →</button>
+                <span>The block hash sets the course.</span>
+              </div>
+            </section>
+          </div>
           <div id="start-missions">
             <details class="mission-sheet" id="mission-sheet">
               <summary><span id="mission-set">Missions</span><span id="mission-mult"></span></summary>
@@ -98,7 +126,9 @@ export class UI {
       <section class="screen pause" id="s-pause">
         <div class="panel">
           <h2 data-k="paused"></h2>
+          <p class="block-course" id="pause-block-course" hidden></p>
           <button class="big" id="btn-resume" data-k="resume"></button>
+          <div id="pause-chain"></div>
           <div id="pause-missions"></div>
           <button class="ghost" id="btn-restart" data-k="restart"></button>
           <button class="ghost" id="btn-home" data-k="home"></button>
@@ -107,6 +137,7 @@ export class UI {
       <section class="screen over" id="s-over">
         <div class="panel">
           <h2 id="result-title" data-k="over"></h2><p class="catch-line" id="result-message">“Please explain the source of these sats.”</p>
+          <p class="block-course" id="over-block-course" hidden></p>
           <div class="badge" id="newbest" data-k="newBest"></div>
           <div class="result">
             <div><small data-k="score"></small><b id="r-score">0</b></div>
@@ -122,6 +153,7 @@ export class UI {
     root.querySelectorAll<HTMLElement>('[id]').forEach((e) => (this.el[e.id] = e));
     const tap = (id: string, fn: () => void) => this.el[id].addEventListener('click', (e) => { e.stopPropagation(); fn(); });
     tap('btn-play', () => h.play());
+    tap('btn-block-run', () => h.playBlock?.());
     tap('btn-pause', () => h.pause());
     tap('btn-resume', () => h.resume());
     tap('btn-restart', () => h.restart());
@@ -201,6 +233,7 @@ export class UI {
     this.root.dataset.screen = s;
     for (const k of ['start', 'pause', 'over'] as const) this.el['s-' + k].classList.toggle('on', s === k);
     this.el.hud.classList.toggle('on', s === 'play' || s === 'pause');
+    if (s === 'start' || s === 'pause') this.el[s + '-chain'].append(this.el['chain-panel']);
     if (s !== 'play') {
       const sheet = this.el['mission-sheet'] as HTMLDetailsElement;
       this.el[s + '-missions'].append(sheet);
@@ -215,8 +248,59 @@ export class UI {
 
   setStart(best: number, bank: number) {
     this.clearRunMessages();
+    this.setBlockBonus(0);
     this.el.best.textContent = String(best);
     this.el.bank.textContent = String(bank);
+  }
+
+  setChain(feed: ChainFeed) {
+    const { status, tip, pendingTx } = feed;
+    const source = this.el['chain-source'] as HTMLAnchorElement;
+    const height = tip ? '#' + tip.height.toLocaleString('en-US') : '—';
+    this.el['chain-height'].textContent = height;
+    this.el['chain-pending'].textContent = pendingTx === null ? '—' : pendingTx.toLocaleString('en-US');
+    this.el['chain-panel'].dataset.state = status;
+    this.el['chain-hud'].dataset.state = status;
+    this.el['chain-connection'].textContent = status === 'live' ? 'Live'
+      : status === 'offline' ? (tip ? 'Offline · last seen' : 'Offline') : 'Connecting';
+    source.href = tip ? 'https://mempool.space/block/' + tip.hash : 'https://mempool.space/';
+    source.setAttribute('aria-label', tip ? 'View block ' + height + ' on mempool.space' : 'View mempool.space');
+    (this.el['btn-block-run'] as HTMLButtonElement).disabled = status !== 'live' || !tip;
+    const pending = pendingTx === null ? '' : ' · ' + compactCount.format(pendingTx) + ' pending';
+    this.el['chain-ticker'].textContent = status === 'live' && tip ? 'LIVE ' + height + pending
+      : status === 'offline' ? (tip ? 'OFFLINE · ' + height : 'Mainnet · offline') : 'Mainnet · connecting';
+  }
+
+  setBlockCourse(height: number | null) {
+    const label = height === null ? '' : 'Block course #' + height.toLocaleString('en-US');
+    this.el['btn-again'].textContent = height === null ? t('again') : 'Replay this block →';
+    this.el['btn-restart'].textContent = height === null ? t('restart') : 'Restart block course';
+    for (const id of ['pause-block-course', 'over-block-course']) {
+      this.el[id].hidden = height === null;
+      this.el[id].textContent = label;
+    }
+  }
+
+  setBlockBonus(secondsRemaining: number, height?: number) {
+    const seconds = Math.max(0, Math.ceil(secondsRemaining));
+    const newHeight = height !== undefined && height !== this.blockHeight;
+    if (this.blockSeconds === seconds && !newHeight) return;
+    const starting = this.blockSeconds === 0 || newHeight;
+    this.blockSeconds = seconds;
+    if (newHeight) this.blockHeight = height;
+    const badge = this.el['block-bonus'];
+    badge.hidden = seconds === 0;
+    if (seconds === 0) {
+      this.blockHeight = null;
+      this.el['block-alert'].textContent = '';
+      return;
+    }
+    if (starting) {
+      const label = this.blockHeight === null ? 'New block' : 'Block #' + this.blockHeight.toLocaleString('en-US');
+      this.el['block-bonus-name'].textContent = label;
+      this.el['block-alert'].textContent = label + ' mined. Double pickup score for ' + seconds + ' seconds.';
+    }
+    this.el['block-bonus-seconds'].textContent = seconds + 's';
   }
 
   setMissions(set: number, multiplier: number, goals: ReadonlyArray<{ label: string; current: number; target: number }>) {

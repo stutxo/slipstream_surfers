@@ -22,6 +22,16 @@ The opening starts at 14 m/s, with a first action around two seconds and a minin
 
 ## Track guide
 
+### Bitcoin mainnet
+
+The mainnet panel shows the latest Bitcoin block and the pending transaction count observed by mempool.space. Select **Surf this block** to play a course seeded by the block hash. The introductory obstacles are shared across courses. After the opening, everyone surfing the same block gets the same generated track. Retrying replays that course even if another block arrives.
+
+The turquoise packets beside the cables get denser as the observed mempool grows in virtual bytes. When the game observes a new block extending the previous tip during active play, the tunnel turns gold and track pickups earn **double score for 21 seconds of play**. The number of sats collected stays the same. An ordinary run can start immediately and continues if the feed drops.
+
+The browser reads the public blocks and mempool summaries about once a minute while visible. The first sample, reconnects, and chain reorganizations establish a baseline. [mempool.space REST API](https://mempool.space/docs/api/rest).
+
+### Obstacles
+
 - **RBF War** turns replace-by-fee bids into a pair of competing fee charts. Jump the hurdle or change cables.
 - **Key Exposure** is a jumpable policy node. Its recovery theme refers to the use of private submission for affected Coldcard multisig spends. Sending directly to a miner can limit public pre-confirmation exposure. [Unchained’s account](https://help.unchained.com/should-i-use-slipstream-to-submit-my-transaction) and [MARA Foundation’s retrospective](https://foundation.mara.com/articles/9k-bitcoin-rescued-out-of-coldcard-multisigs).
 - **Quantum Watch** is a slide-under scanner. Its theme imagines a future attacker observing a public key revealed by a pending spend. Private submission narrows who can observe that spend before confirmation. Previously revealed keys remain public. [BIP 360’s short-exposure discussion](https://bips.dev/360/).

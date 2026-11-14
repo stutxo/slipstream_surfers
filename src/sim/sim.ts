@@ -14,6 +14,7 @@ export type { Spec };
 const MAX_STEP = 1 / 120;
 const MINER_EXIT_DISTANCE = 12;
 const DELIVERY_SATS = 21;
+export const BLOCK_BONUS_SECONDS = 21;
 const easeOut = (t: number) => 1 - (1 - t) * (1 - t) * (1 - t);
 
 export class Sim {
@@ -51,6 +52,8 @@ export class Sim {
   slipstreamExitGrace = 0;
   private slipstreamBypassed = new Set<number>();
   readonly missions: Missions;
+  private lastBonusHeight = 0;
+  private blockBonusUntil = 0;
   private exitMinerAt: number | null = null;
   // world
   obs: Ob[] = [];
@@ -91,6 +94,7 @@ export class Sim {
       sinceStumble: 99, stumbleSlow: 0, ignoreId: -1, ignoreT: 0, airTime: 0, peakY: 0, coins: 0, coinStreak: 0,
       coinStreakT: 0, score: 0, slipstreamExitGrace: 0,
     });
+    this.blockBonusUntil = 0;
     this.exitMinerAt = null;
     this.missions.beginRun();
     this.slipstreamBypassed.clear();
@@ -160,6 +164,16 @@ export class Sim {
   start() {
     this.running = true;
   }
+
+  startBlockBonus(height: number) {
+    if (!this.running || !this.alive || !Number.isSafeInteger(height) || height <= this.lastBonusHeight) return false;
+    this.lastBonusHeight = height;
+    this.blockBonusUntil = this.time + BLOCK_BONUS_SECONDS;
+    return true;
+  }
+
+  get blockBonusSeconds() { return Math.max(0, this.blockBonusUntil - this.time); }
+
   left() { this.changeLane(-1); }
   right() { this.changeLane(1); }
   private changeLane(dir: number) {
@@ -469,6 +483,7 @@ export class Sim {
       return;
     }
     this.alive = false;
+    this.blockBonusUntil = 0;
     this.slideT = 0;
     this.events.push({ type: 'crash', kind, x: this.x, y: this.y });
   }
@@ -503,7 +518,7 @@ export class Sim {
         this.coins++;
         this.coinStreak++;
         this.coinStreakT = 0.6;
-        this.score += 5 * this.mult;
+        this.score += (this.blockBonusSeconds > 0 ? 10 : 5) * this.mult;
         this.events.push({ type: 'coin', x: c.x, y: c.y, streak: this.coinStreak });
         const surfingRack = c.rackRoof && this.grounded && this.groundY === OB.train.yt && this.aboveRack(this.x, this.d);
         if (this.missions.pickup(surfingRack)) this.missionCompleted();
@@ -569,6 +584,7 @@ export class Sim {
       speed: +this.speed.toFixed(2), grounded: this.grounded, sliding: this.sliding, alive: this.alive, running: this.running,
       coins: this.coins, score: Math.floor(this.score), mult: this.mult, power: { ...this.power },
       slipstreamExitGrace: +this.slipstreamExitGrace.toFixed(3),
+      blockBonusSeconds: +this.blockBonusSeconds.toFixed(3),
       sinceStumble: +this.sinceStumble.toFixed(2), groundY: +this.groundY.toFixed(2),
       obs: this.obs.length, coinCount: this.coinList.length, powers: this.powers.length,
       created: { ...this.created }, pooled: { obs: this.freeObs.length, coins: this.freeCoins.length, powers: this.freePowers.length },

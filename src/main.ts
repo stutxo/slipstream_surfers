@@ -1,6 +1,8 @@
 // Start-up, game states and the frame loop.
 import * as THREE from 'three';
 import { Sim } from './sim/sim';
+import { startLiveChain, type ChainFeed, type ChainTip } from './live-chain';
+import { blockCourseSeed } from './block-course';
 import { solve, type Spec } from './sim/track';
 import { World } from './view/world';
 import { createBitcoinCore } from './view/models';
@@ -61,6 +63,8 @@ async function main() {
   let best = load('best', 0);
   let bank = load('bank', 0);
   let state: Screen = 'start';
+  let chain: ChainFeed | null = null;
+  let course: ChainTip | null = null;
   let overTimer = 0;
   const horned = new Set<number>();
 
@@ -83,6 +87,12 @@ async function main() {
   };
   const ui = new UI(document.getElementById('ui')!, {
     play: () => play(),
+    playBlock: () => {
+      if (state !== 'start' || chain?.status !== 'live' || !chain.tip) return;
+      course = chain.tip;
+      toTitle(false);
+      play();
+    },
     resume: () => resume(),
     pause: () => pause(),
     restart: () => { toTitle(false); play(); },
@@ -111,15 +121,17 @@ async function main() {
   let seed = (Date.now() % 100000) + 1;
   function toTitle(show: boolean) {
     cancelSwipe();
+    if (show) course = null;
     seed = (seed * 48271) % 2147483647;
     sim.noSpawn = false;
-    sim.reset(seed, !load('tutorialDone', false));
+    sim.reset(course ? blockCourseSeed(course.hash) : seed, !load('tutorialDone', false));
     world.resetScenery();
     world.fx.clear();
     audio.stopMusic();
     overTimer = 0;
     state = 'start';
     ui.setStart(best, bank);
+    ui.setBlockCourse(course?.height ?? null);
     updateMissionSheet();
     if (show) ui.show('start');
   }
@@ -250,6 +262,7 @@ async function main() {
     }
     audio.rumble(rumble);
     ui.hud(Math.floor(sim.score), sim.coins, sim.mult, sim.power);
+    ui.setBlockBonus(sim.alive ? sim.blockBonusSeconds : 0);
     ui.status(sim.d, sim.power.slipstream, sim.slipstreamExitGrace);
     canvas.setAttribute('aria-label', `Slipstream Surfers: ${state}, ${Math.floor(sim.d)} metres, ${sim.coins} sats, lane ${sim.lane + 1}${sim.y > 2 ? ', on packet roof' : ''}${sim.power.slipstream > 0 ? ', private tunnel' : ''}${sim.slipstreamExitGrace > 0 ? ', exit shield' : ''}, character ${characterInfo(selectedCharacter).name}`);
     if (draw) renderer.render(world.scene, world.camera);
@@ -264,6 +277,24 @@ async function main() {
   boot.set(1);
   ui.show('start');
   boot.done();
+
+  if (!TEST) {
+    const connect = () => startLiveChain(snapshot => {
+      chain = snapshot;
+      ui.setChain(snapshot);
+      world.setMempoolSize(snapshot.status === 'live' ? snapshot.vsize : null);
+    }, tip => {
+      if (state === 'play' && sim.startBlockBonus(tip.height)) {
+        ui.setBlockBonus(sim.blockBonusSeconds, tip.height);
+        audio.level();
+      }
+    });
+    let disconnect = connect();
+    window.addEventListener('pagehide', () => disconnect());
+    window.addEventListener('pageshow', event => {
+      if (event.persisted) disconnect = connect();
+    });
+  }
 
   let last = performance.now();
   const loop = (now: number) => {
