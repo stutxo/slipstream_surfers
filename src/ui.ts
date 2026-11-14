@@ -53,7 +53,6 @@ export class UI {
       </div>
       <div class="flash" id="flash"></div>
       <section class="screen start" id="s-start">
-        <div class="portal-banner">Bitcoin Network Arcade.</div>
         <div class="panel">
           <h1 class="brand-title"><img class="brand-logo" src="./assets/brand/slipstream-logo.svg" alt="MARA Slipstream" width="455" height="109"><span>SURFERS</span></h1>
           <p class="tag" data-k="tagline"></p>
