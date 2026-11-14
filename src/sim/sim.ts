@@ -7,9 +7,13 @@ import {
 } from '../config';
 import type { Ob, Coin, Power, SimEvent, ObKind, PowerKind, Hint } from './types';
 import { Track, type Spec } from './track';
+import { PACKET } from './obstacle-variants';
+import { Missions } from '../missions';
 export type { Spec };
 
 const MAX_STEP = 1 / 120;
+const MINER_EXIT_DISTANCE = 12;
+const DELIVERY_SATS = 21;
 const easeOut = (t: number) => 1 - (1 - t) * (1 - t) * (1 - t);
 
 export class Sim {
@@ -46,7 +50,8 @@ export class Sim {
   power: Record<PowerKind, number> = { magnet: 0, shoes: 0, double: 0, slipstream: 0, helmet: 0, cpfp: 0 };
   slipstreamExitGrace = 0;
   private slipstreamBypassed = new Set<number>();
-  baseMult = 1;
+  readonly missions: Missions;
+  private exitMinerAt: number | null = null;
   // world
   obs: Ob[] = [];
   coinList: Coin[] = [];
@@ -63,7 +68,8 @@ export class Sim {
   private freePowers: Power[] = [];
   created = { obs: 0, coins: 0, powers: 0 };
 
-  constructor(seed = 1) {
+  constructor(seed = 1, savedMissions?: unknown) {
+    this.missions = new Missions(savedMissions);
     this.track = new Track(seed, {
       ob: (s) => this.addOb(s),
       coin: (lane, d, y) => this.addCoin(lane, d, y),
@@ -83,8 +89,10 @@ export class Sim {
       lane: 1, fromX: 0, laneT: 1, x: 0, y: 0, vy: 0, grounded: true, groundY: 0, slideT: 0, fastFall: false,
       slideQueued: false, coyoteT: 0, jumpBufT: 0, d: 0, speed: 0, alive: true, running: false, time: 0,
       sinceStumble: 99, stumbleSlow: 0, ignoreId: -1, ignoreT: 0, airTime: 0, peakY: 0, coins: 0, coinStreak: 0,
-      coinStreakT: 0, score: 0, baseMult: 1, slipstreamExitGrace: 0,
+      coinStreakT: 0, score: 0, slipstreamExitGrace: 0,
     });
+    this.exitMinerAt = null;
+    this.missions.beginRun();
     this.slipstreamBypassed.clear();
     this.power = { magnet: 0, shoes: 0, double: 0, slipstream: 0, helmet: 0, cpfp: 0 };
     this.track.reset(seed, tutorial);
@@ -114,7 +122,9 @@ export class Sim {
   addCoin(lane: number, d: number, y: number) {
     const c = this.freeCoins.pop() || ({} as Coin);
     if (!c.id) this.created.coins++;
-    Object.assign(c, { id: this.nextId++, lane, d, y, x: laneX(lane), pulled: false });
+    const x = laneX(lane);
+    const rackRoof = y > OB.train.yt && this.aboveRack(x, d);
+    Object.assign(c, { id: this.nextId++, lane, d, y, x, pulled: false, rackRoof });
     this.coinList.push(c);
   }
   addPower(kind: PowerKind, lane: number, d: number, y: number) {
@@ -142,6 +152,7 @@ export class Sim {
     this.coinList.length = 0;
     this.powers.length = 0;
     this.slipstreamExitGrace = 0;
+    this.exitMinerAt = null;
     this.slipstreamBypassed.clear();
   }
 
@@ -198,7 +209,12 @@ export class Sim {
   get spawned() { return this.nextId - 1; }
   get sliding() { return this.slideT > 0; }
   get bodyH() { return this.sliding ? PLAYER.slideHeight : PLAYER.height; }
+  get baseMult() { return this.missions.multiplier; }
   get mult() { return this.baseMult * (this.power.double > 0 ? 2 : 1); }
+  get minerOffset() {
+    if (this.exitMinerAt !== null) return this.exitMinerAt - this.d;
+    return MINER_EXIT_DISTANCE + this.power.slipstream * 12;
+  }
 
   // ------------------------------------------------------------------ update
   update(dt: number) {
@@ -228,6 +244,7 @@ export class Sim {
     this.stumbleSlow = Math.max(0, this.stumbleSlow - dt);
     this.ignoreT = Math.max(0, this.ignoreT - dt);
     this.slipstreamExitGrace = Math.max(0, this.slipstreamExitGrace - dt);
+    if (this.slipstreamExitGrace === 0) this.exitMinerAt = null;
     this.coyoteT = Math.max(0, this.coyoteT - dt);
     this.jumpBufT = Math.max(0, this.jumpBufT - dt);
     this.coinStreakT = Math.max(0, this.coinStreakT - dt);
@@ -237,7 +254,10 @@ export class Sim {
       if (this.power[k] > 0) {
         this.power[k] = Math.max(0, this.power[k] - dt);
         if (this.power[k] === 0) {
-          if (k === 'slipstream') this.slipstreamExitGrace = SLIPSTREAM_EXIT_GRACE;
+          if (k === 'slipstream') {
+            this.slipstreamExitGrace = SLIPSTREAM_EXIT_GRACE;
+            this.exitMinerAt = this.d + MINER_EXIT_DISTANCE;
+          }
           this.events.push({ type: 'powerEnd', kind: k });
         }
       }
@@ -246,11 +266,6 @@ export class Sim {
     const base = this.speedOverride || speedAt(this.d);
     this.speed = base * (this.stumbleSlow > 0 ? 0.82 : 1) * (this.power.cpfp > 0 ? CPFP_SPEED : 1);
     this.d += this.speed * dt;
-    const mult = 1 + Math.min(5, Math.floor(this.d / 800));
-    if (mult !== this.baseMult) {
-      this.baseMult = mult;
-      this.events.push({ type: 'level', mult });
-    }
     this.score += this.speed * dt * 0.5 * this.mult;
     // sideways
     if (this.laneT < 1) {
@@ -284,6 +299,11 @@ export class Sim {
 
     this.collide(prevX, prevY, prevD, prevH);
     if (!this.alive) return;
+    if (this.exitMinerAt !== null && prevD < this.exitMinerAt && this.d >= this.exitMinerAt) {
+      this.coins += DELIVERY_SATS;
+      this.events.push({ type: 'delivery', sats: DELIVERY_SATS });
+      if (this.missions.delivery()) this.missionCompleted();
+    }
     this.pickups(dt);
     this.hints();
     // keep the map ahead, drop what is behind
@@ -485,6 +505,8 @@ export class Sim {
         this.coinStreakT = 0.6;
         this.score += 5 * this.mult;
         this.events.push({ type: 'coin', x: c.x, y: c.y, streak: this.coinStreak });
+        const surfingRack = c.rackRoof && this.grounded && this.groundY === OB.train.yt && this.aboveRack(this.x, this.d);
+        if (this.missions.pickup(surfingRack)) this.missionCompleted();
         this.freeCoins.push(c);
         this.coinList.splice(i, 1);
       }
@@ -494,12 +516,20 @@ export class Sim {
       const x = laneX(p.lane);
       if (Math.abs(p.d - this.d) < 1.0 && Math.abs(x - this.x) < 1.1 && p.y > this.y - 0.5 && p.y < this.y + h + 0.6) {
         this.power[p.kind] = POWER_TIME[p.kind];
-        if (p.kind === 'slipstream') this.slipstreamExitGrace = 0;
         this.events.push({ type: 'power', kind: p.kind, x, y: p.y });
         this.freePowers.push(p);
         this.powers.splice(i, 1);
       }
     }
+  }
+
+  private aboveRack(x: number, d: number) {
+    return this.obs.some(o => o.kind === 'train' && o.variant === PACKET.rack &&
+      d >= o.d0 && d <= o.d1 && Math.abs(x - laneX(o.lane)) <= o.halfW);
+  }
+
+  private missionCompleted() {
+    this.events.push({ type: 'level', mult: this.baseMult, set: this.missions.state.set - 1 });
   }
 
   private hints() {

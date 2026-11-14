@@ -29,6 +29,7 @@ export interface Coin {
   y: number;
   x: number; // usually laneX(lane); moves when pulled by the magnet
   pulled: boolean;
+  rackRoof: boolean; // Origin of this sat, before a magnet moves it.
 }
 
 export interface Power {
@@ -50,5 +51,6 @@ export type SimEvent =
   | { type: 'coin'; x: number; y: number; streak: number }
   | { type: 'power'; kind: PowerKind; x: number; y: number }
   | { type: 'powerEnd'; kind: PowerKind }
+  | { type: 'delivery'; sats: number }
   | { type: 'hint'; hint: Hint }
-  | { type: 'level'; mult: number };
+  | { type: 'level'; mult: number; set: number };

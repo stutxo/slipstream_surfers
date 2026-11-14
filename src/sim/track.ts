@@ -3,6 +3,7 @@
 import { LANE_COUNT, OB, PLAYER, levelAt, speedAt, trainLength, CAR_LEN, CAR_GAP, MOVER, CPFP_SPEED } from '../config';
 import type { ObKind, PowerKind, Hint } from './types';
 import { Rng } from './rng';
+import { PACKET, KEY_EXPOSURE, RBF_WAR, QUANTUM_WATCH } from './obstacle-variants';
 
 export interface Spec {
   kind: ObKind;
@@ -189,25 +190,25 @@ export class Track {
       { kind: 'low', lane: 1, d0: 28, d1: 28 + OB.low.depth, hint: hints ? 'jump' : undefined },
       { kind: 'overhead', lane: 1, d0: 50, d1: 50 + OB.overhead.depth, hint: hints ? 'slide' : undefined },
       { kind: 'ramp', lane: 1, d0: 70, d1: 77, hint: hints ? 'ramp' : undefined },
-      { kind: 'train', lane: 1, d0: 77, d1: 77 + trainLength(5), cars: 5, variant: 2 },
-      { kind: 'train', lane: 0, d0: 84, d1: 84 + trainLength(6), cars: 6, variant: 2 },
-      { kind: 'train', lane: 2, d0: 90, d1: 90 + trainLength(4), cars: 4, variant: 0 },
-      { kind: 'low', lane: 1, d0: 132, d1: 132 + OB.low.depth, variant: 1 },
+      { kind: 'train', lane: 1, d0: 77, d1: 77 + trainLength(5), cars: 5, variant: PACKET.rack },
+      { kind: 'train', lane: 0, d0: 84, d1: 84 + trainLength(6), cars: 6, variant: PACKET.rack },
+      { kind: 'train', lane: 2, d0: 90, d1: 90 + trainLength(4), cars: 4, variant: PACKET.wizard },
+      { kind: 'low', lane: 1, d0: 132, d1: 132 + OB.low.depth, variant: KEY_EXPOSURE },
       { kind: 'ramp', lane: 0, d0: 142, d1: 149 },
-      { kind: 'train', lane: 0, d0: 149, d1: 149 + trainLength(5), cars: 5, variant: 2 },
-      { kind: 'train', lane: 1, d0: 148, d1: 148 + trainLength(5), cars: 5, variant: 2, hint: hints ? 'lane' : undefined },
-      { kind: 'train', lane: 2, d0: 168, d1: 168 + trainLength(4), cars: 4, variant: 1 },
+      { kind: 'train', lane: 0, d0: 149, d1: 149 + trainLength(5), cars: 5, variant: PACKET.rack },
+      { kind: 'train', lane: 1, d0: 148, d1: 148 + trainLength(5), cars: 5, variant: PACKET.rack, hint: hints ? 'lane' : undefined },
+      { kind: 'train', lane: 2, d0: 168, d1: 168 + trainLength(4), cars: 4, variant: PACKET.punk },
       { kind: 'low', lane: 0, d0: 215, d1: 215 + OB.low.depth },
-      { kind: 'low', lane: 1, d0: 215, d1: 215 + OB.low.depth },
+      { kind: 'hurdle', lane: 1, d0: 215, d1: 215 + OB.hurdle.depth, variant: RBF_WAR },
       { kind: 'low', lane: 2, d0: 215, d1: 215 + OB.low.depth },
-      { kind: 'overhead', lane: 2, d0: 241, d1: 241 + OB.overhead.depth },
+      { kind: 'overhead', lane: 2, d0: 241, d1: 241 + OB.overhead.depth, variant: QUANTUM_WATCH },
     ];
     const end = 270;
     const res = solve(specs, 0, end, [1], speedAt, true, 0);
     for (const sp of specs) this.sink.ob(sp);
     if (res.path) this.coinsAlong(res.path, specs, 0, end, 1);
     // Optional high-value roof lines make rack surfing worth choosing over a ground dodge.
-    for (const rack of specs.filter(sp => sp.kind === 'train' && sp.variant === 2)) {
+    for (const rack of specs.filter(sp => sp.kind === 'train' && sp.variant === PACKET.rack)) {
       for (let d = rack.d0 + 2; d < rack.d1 - 1; d += 2.1) this.sink.coin(rack.lane, d, OB.train.yt + 0.85);
     }
     this.sink.power('magnet', 1, 18, 1.1);
@@ -240,7 +241,7 @@ export class Track {
     for (const s of specs) this.sink.ob(s);
     if (res.path) this.coinsAlong(res.path, specs, start, end, lvl);
     for (const ramp of specs.filter(o => o.kind === 'ramp')) {
-      const rack = specs.find(o => o.kind === 'train' && o.variant === 2 && o.lane === ramp.lane && Math.abs(o.d0 - ramp.d1) < 0.01);
+      const rack = specs.find(o => o.kind === 'train' && o.variant === PACKET.rack && o.lane === ramp.lane && Math.abs(o.d0 - ramp.d1) < 0.01);
       if (rack) for (let d = ramp.d0 + 2; d < rack.d1 - 1; d += 2.1) this.coinAt(rack.lane, d, true, specs);
     }
     if (res.path && this.nextPower < end && this.nextPower >= start) this.placePower(res.path, specs, start, end);
@@ -259,7 +260,9 @@ export class Track {
     const free = (l: number, at: number) => busy[l] <= at;
     const barrier = (l: number, at: number) => {
       const kind: ObKind = r.weighted({ low: 0.4, hurdle: 0.3, overhead: lvl < 0.02 ? 0.05 : 0.3 });
-      specs.push({ kind, lane: l, d0: at, d1: at + OB[kind].depth });
+      // Assign art without consuming a random draw or changing the route.
+      const variant = (Math.floor(at) + l) % (kind === 'low' ? 4 : 2);
+      specs.push({ kind, lane: l, d0: at, d1: at + OB[kind].depth, variant });
       busy[l] = at + v * CPFP_SPEED * 0.85;
     };
     const train = (l: number, at: number, withRamp: boolean, maxCars: number) => {
@@ -269,7 +272,7 @@ export class Track {
       // Check the whole formation before inserting its ramp: never leave a dead-end wedge.
       if (t1 > end - 8) return false;
       if (withRamp) specs.push({ kind: 'ramp', lane: l, d0: at, d1: t0 });
-      const variant = r.chance(0.72) ? 2 : r.pick([0, 1, 3]);
+      const variant = r.chance(0.72) ? PACKET.rack : r.pick([PACKET.full, PACKET.cat, PACKET.rejected, PACKET.wizard, PACKET.punk]);
       specs.push({ kind: 'train', lane: l, d0: t0, d1: t1, cars, variant });
       busy[l] = t1 + v * CPFP_SPEED * 0.8;
       return true;
@@ -279,7 +282,7 @@ export class Track {
       if (busy[l] > at - 10) return false;
       const cars = r.int(1, Math.min(3, maxCars));
       const len = trainLength(cars);
-      specs.push({ kind: 'mtrain', lane: l, d0: at, d1: at + len / (1 + MOVER.ratio), cars, variant: r.int(0, 3) });
+      specs.push({ kind: 'mtrain', lane: l, d0: at, d1: at + len / (1 + MOVER.ratio), cars, variant: r.int(PACKET.full, PACKET.punk) });
       busy[l] = at + MOVER.ratio * MOVER.trigger + len + 4;
       return true;
     };

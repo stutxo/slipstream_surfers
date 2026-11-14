@@ -54,7 +54,8 @@ async function main() {
   const world = new World(core, { shadowSize: mobile ? 1024 : 2048 });
   let selectedCharacter = characterId(load<unknown>('character', 'transaction'));
   world.player.setCharacter(selectedCharacter);
-  const sim = new Sim(1);
+  const sim = new Sim(1, load<unknown>('missions', null));
+  let savedMissionRevision = sim.missions.revision;
   const audio = new Audio();
   audio.setMuted(load('muted', true));
   let best = load('best', 0);
@@ -98,8 +99,18 @@ async function main() {
   }, audio.muted);
   ui.setCharacter(selectedCharacter);
 
+  function updateMissionSheet() {
+    ui.setMissions(sim.missions.state.set, sim.baseMult, sim.missions.goals());
+  }
+  function saveMissionProgress() {
+    if (savedMissionRevision === sim.missions.revision) return;
+    save('missions', sim.missions.state);
+    savedMissionRevision = sim.missions.revision;
+  }
+
   let seed = (Date.now() % 100000) + 1;
   function toTitle(show: boolean) {
+    cancelSwipe();
     seed = (seed * 48271) % 2147483647;
     sim.noSpawn = false;
     sim.reset(seed, !load('tutorialDone', false));
@@ -109,6 +120,7 @@ async function main() {
     overTimer = 0;
     state = 'start';
     ui.setStart(best, bank);
+    updateMissionSheet();
     if (show) ui.show('start');
   }
   function play() {
@@ -122,9 +134,11 @@ async function main() {
     ui.show('play');
   }
   function pause() {
-    if (state !== 'play') return;
+    if (state !== 'play' || !sim.alive) return;
+    cancelSwipe();
     state = 'pause';
     audio.stopMusic();
+    updateMissionSheet();
     ui.show('pause');
   }
   function resume() {
@@ -146,7 +160,7 @@ async function main() {
     else if (a === 'up') sim.jump();
     else if (a === 'down') sim.down();
   }
-  bindInput(document.getElementById('ui')!, onAction, () => state === 'play');
+  const cancelSwipe = bindInput(document.getElementById('ui')!, onAction, () => state === 'play' && sim.alive);
   document.addEventListener('visibilitychange', () => { if (document.hidden && !TEST) pause(); });
 
   function handle(ev: SimEvent) {
@@ -160,9 +174,11 @@ async function main() {
       case 'coin': audio.coin(ev.streak); break;
       case 'power': audio.power(); ui.toast(ev.kind === 'slipstream' ? 'Slipstream · 9s hazard protection' : t(ev.kind)); ui.flash('power'); break;
       case 'powerEnd': audio.powerEnd(); break;
-      case 'level': audio.level(); ui.toast(t('mult') + ' ×' + ev.mult); break;
+      case 'delivery': audio.coin(8); ui.confirmDelivery(ev.sats); break;
+      case 'level': audio.level(); ui.toast('Mission set ' + ev.set + ' complete · ×' + ev.mult + ' score', 2000); break;
       case 'stumble': audio.stumble(); ui.flash('hit'); ui.toast(t('careful'), 1600); break;
       case 'crash': {
+        cancelSwipe();
         audio.crash();
         audio.stopMusic();
         ui.flash('crash');
@@ -171,6 +187,7 @@ async function main() {
         if (newBest) { best = score; save('best', best); }
         bank += sim.coins; save('bank', bank);
         ui.result({ score, coins: sim.coins, distance: Math.floor(sim.d), best, newBest });
+        updateMissionSheet();
         overTimer = 0;
         break;
       }
@@ -211,6 +228,7 @@ async function main() {
     if (state === 'play') sim.update(dt);
     const events = sim.drainEvents();
     for (const ev of events) handle(ev);
+    saveMissionProgress();
     if (state === 'play' && !sim.alive) {
       overTimer += dt;
       if (overTimer > 1.2) { state = 'over'; ui.show('over'); }

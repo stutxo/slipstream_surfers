@@ -6,6 +6,8 @@ Original procedural assets are in `src/view/models.ts`, `src/view/player.ts`, an
 - Three selectable rounded arcade human runners: PortlandHODL (bald, blue shirt, laser eyes and handheld keyboard), IFD (side-parted dirty-blonde hair, black outfit, gold jewelry, jeweled tiara and handheld broadcast microphone), and Peter Todd (brown hair and beard, sunglasses, red shirt, a hiking backpack with padded shoulder loops, and black track trousers with three white side stripes). The user supplied appearance references; reference photos are not shipped with the game. Portraits are rendered locally from the playable 3D models.
 - Mining-rack convoys with graphite cabinets, ASIC cooling fans, heat-sink grills, orange roof rails and cyan direction markers.
 - Packet convoys: full blocks, giant JPEG inscriptions and rejection gates.
+- The wizard and punk packet prints are original pixel-art tributes drawn for the game. The wizard draws on the robed, bearded character from Taproot Wizards. The punk uses the square pixel portrait format of Ordinal Punks. [Taproot Wizards collection](https://taprootwizards.com/collection) and [Ordinal Punks project](https://github.com/ordinalpunks/awesome-ordinalpunks).
+- The RBF War fee chart, Key Exposure checkpoint and Quantum Watch scanner fit the existing jump and slide clearances.
 - Grumpy router checkpoints, fee charts, scanning eyes, surveillance drone with magnifier.
 - Bitcoin sats, three fiber-optic cable lanes, server racks, Slipstream wireframe tunnel and two mining banks framing a clear view of all three lanes.
 

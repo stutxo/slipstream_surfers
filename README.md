@@ -8,15 +8,24 @@ Live game: [Slipstream Surfers](https://slipstream-surfers.xenocardo.chatgpt.sit
 
 Choose from four runners on the start screen: Timmy Transaction, PortlandHODL, IFD, or Peter Todd. The menu previews the actual animated 3D model; the choice is remembered locally and used for every run. All runners share the same movement, collisions and power-ups.
 
-You are a non-standard transaction. Change cables, jump fees and checkpoints, slide beneath scanning eyes, use ramps to surf connected mining-rack and transaction-packet roofs, and collect sats. Slipstream grants 9 seconds of collision immunity and loses the surveillance drone. Sats and scoring continue normally; the miner has no separate arrival reward. The route stays visible throughout, a 3-second exit countdown gives warning, and a 1.5-second exit shield lets you line up the next move. Any obstacle already overlapping during protection stays harmless until you clear it. The scene is an arcade metaphor; no real transactions are submitted.
+You are a non-standard transaction. Change cables, jump fees and checkpoints, slide beneath scanning eyes, and follow ramps onto mining racks and inscription packets. Slipstream grants nine seconds of protection from hazards and lets you lose the surveillance drone. Cross between the miners at the tunnel exit to earn **21 in-game sats** and one miner delivery. The three-second countdown keeps the lanes ahead visible. A 1.5-second exit shield gives you time to line up your next move, and any obstacle already overlapping during protection stays harmless until you clear it.
+
+Open **Missions** at the start, on pause, or after a run. The first set asks for 10 mining-rack rooftop sats in one run, one miner delivery, and 50 collected sats. All three goals advance together. Best rooftop count and cumulative progress are saved in this browser. A completed set raises your base score multiplier by one, up to ×30. Batching temporarily doubles the earned multiplier. Delivery rewards go into your run total, while the pickup goals count sats collected on the track.
 
 - Arrow keys / WASD: switch lanes, jump and slide. Space jumps.
 - P / Esc: pause. M: sound.
-- Touch: swipe in any direction.
+- On a touchscreen, swipe to move, jump, or roll. The move triggers as soon as your finger crosses the gesture threshold.
 
 Power-ups: sat magnet, script jump boost, batching multiplier, Slipstream tunnel, one-hit mining helmet, and CPFP speed boost.
 
 The opening starts at 14 m/s, with a first action around two seconds and a mining-rack ramp around five seconds. Speed builds toward 27 m/s sooner. Recurring rack formations offer connected rooftops, optional roof coin trails, and ramp access; the generator checks a clear route through each formation.
+
+## Track guide
+
+- **RBF War** turns replace-by-fee bids into a pair of competing fee charts. Jump the hurdle or change cables.
+- **Key Exposure** is a jumpable policy node. Its recovery theme refers to the use of private submission for affected Coldcard multisig spends. Sending directly to a miner can limit public pre-confirmation exposure. [Unchained’s account](https://help.unchained.com/should-i-use-slipstream-to-submit-my-transaction) and [MARA Foundation’s retrospective](https://foundation.mara.com/articles/9k-bitcoin-rescued-out-of-coldcard-multisigs).
+- **Quantum Watch** is a slide-under scanner. Its theme imagines a future attacker observing a public key revealed by a pending spend. Private submission narrows who can observe that spend before confirmation. Previously revealed keys remain public. [BIP 360’s short-exposure discussion](https://bips.dev/360/).
+- **Inscription packets** carry original arcade interpretations of a Taproot Wizard and an Ordinal Punk alongside the pixel cat. Look for the wizard on the right of the first rack formation. [Artwork notes](docs/ASSETS.md).
 
 ## Develop
 

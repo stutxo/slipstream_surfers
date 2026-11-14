@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CAR_LEN } from '../config';
+import { PACKET, KEY_EXPOSURE } from '../sim/obstacle-variants';
+import { inscriptionTexture } from './inscriptions';
 
 const ink = new THREE.MeshLambertMaterial({ color: '#10263b' });
 const metal = new THREE.MeshLambertMaterial({ color: '#36576a' });
@@ -24,7 +26,9 @@ export function labelTexture(text: string, fg='#e7ffff', bg='#102439', sub='') {
   const ctx=c.getContext('2d')!;ctx.fillStyle=bg;ctx.fillRect(0,0,512,192);
   ctx.strokeStyle=fg;ctx.lineWidth=8;ctx.strokeRect(7,7,498,178);
   ctx.fillStyle=fg;ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.font=`900 ${text.length>17?31:text.length>12?40:52}px monospace`;ctx.fillText(text,256,sub?75:98);
+  // Fill the painted plate so its name can be read during the approach.
+  const fontSize = Math.min(sub ? 72 : 104, Math.floor(465 / (.61 * text.length)));
+  ctx.font=`900 ${fontSize}px monospace`;ctx.fillText(text,256,sub?75:98,465);
   if(sub){ctx.font='bold 23px monospace';ctx.fillText(sub,256,137);}
   const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;return t;
 }
@@ -99,10 +103,10 @@ function miningRackModel() {
 }
 
 export function packetModel(variant:number){
-  if (variant === 2) return miningRackModel();
+  if (variant === PACKET.rack) return miningRackModel();
   const g=new THREE.Group();const w=2.26,H=3.4,D=CAR_LEN;
-  const accent=[orange,purple,cyan,red][variant%4];
-  const shell=new THREE.MeshLambertMaterial({color:[0xff8c24,0x9372e8,0x22bdb4,0xe33c5f][variant%4],transparent:true,opacity:.3,depthWrite:false});
+  const accent=[orange,purple,cyan,red,yellow,cyan][variant];
+  const shell=new THREE.MeshLambertMaterial({color:[0xff8c24,0x9372e8,0x22bdb4,0xe33c5f,0xbca15f,0x59adae][variant],transparent:true,opacity:.3,depthWrite:false});
   box(g,w,H-.12,D,0,H/2,0,shell);
   // Thick glass rim, clearly defined rideable roof, four corner spines.
   box(g,w+.02,.18,D+.02,0,H-.09,0,accent);
@@ -115,12 +119,32 @@ export function packetModel(variant:number){
   box(g,.12,.025,D-.2,0,H+.015,0,white);
   for(const z of [-2.4,-.8,.8,2.4]){box(g,.55,.028,.08,-.66,H+.02,z,ink);box(g,.55,.028,.08,.66,H+.02,z,ink);}
   const front=D/2+.075;
-  if(variant===1){
-    const tex=new THREE.TextureLoader().load('assets/inscription-cat.png');tex.colorSpace=THREE.SRGBColorSpace;tex.anisotropy=4;
-    const face=new THREE.Mesh(new THREE.PlaneGeometry(1.98,2.15),new THREE.MeshBasicMaterial({map:tex}));face.position.set(0,1.62,front);g.add(face);
-    sign(g,'BIG JPEG',2.05,.5,0,2.98,front+.02,'#eddfff','#32235d');
-    sign(g,'4 MB OF MEOW',2.02,.35,0,.32,front+.02,'#f4b0ff','#32235d');
-  }else if(variant===3){
+  const isInscription = variant === PACKET.cat || variant === PACKET.wizard || variant === PACKET.punk;
+  let sideLabel = 'TRANSACTION PACKET';
+  if (isInscription) {
+    const isCat = variant === PACKET.cat;
+    const isWizard = variant === PACKET.wizard;
+    const title = isCat ? 'BIG JPEG' : isWizard ? 'TAPROOT WIZARDS' : 'ORDINAL PUNKS';
+    const background = isCat ? '#32235d' : isWizard ? '#1c3159' : '#25374c';
+    const foreground = isCat ? '#eddfff' : isWizard ? '#ffe4a0' : '#bcfcec';
+    const texture = isCat ? new THREE.TextureLoader().load('assets/inscription-cat.png') : inscriptionTexture(isWizard ? 'wizard' : 'punk');
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 4;
+    const print = new THREE.MeshBasicMaterial({ map: texture });
+    const panel = new THREE.PlaneGeometry(2.02, 2.02);
+    const face = new THREE.Mesh(panel, print);
+    face.position.set(0, 1.63, front);
+    g.add(face);
+    sign(g, title, 2.05, .48, 0, 2.97, front+.02, foreground, background);
+    sign(g, isCat ? '4 MB OF MEOW' : 'ARCADE TRIBUTE', 2.02, .33, 0, .32, front+.02, foreground, background);
+    for (const side of [-1, 1]) {
+      const gallery = new THREE.Mesh(panel, print);
+      gallery.position.set(side * 1.143, 1.48, 0);
+      gallery.rotation.y = side * Math.PI / 2;
+      g.add(gallery);
+    }
+    sideLabel = isCat ? 'INSCRIPTION' : title;
+  }else if(variant===PACKET.rejected){
     const stamp=sign(g,'REJECTED',2.05,.84,0,2.2,front+.03,'#ff6b81','#4e1230');stamp.rotation.z=-.12;
     sign(g,'STANDARDNESS',2,.38,0,1.42,front+.03,'#ffb2be','#4e1230');
   }else{
@@ -129,33 +153,73 @@ export function packetModel(variant:number){
     sign(g,'₿',.75,.62,0,.77,front+.02,'#ffeac0','#713816');
   }
   // Side identification plates stay readable when riding adjacent convoys.
-  for(const x of [-1,1]){const side=sign(g,variant===1?'INSCRIPTION':'TRANSACTION PACKET',3.9,.55,x*1.14,2.5,0,'#dcffff','#14283d');side.rotation.y=x*Math.PI/2;}
+  for(const x of [-1,1]){const side=sign(g,sideLabel,3.9,.50,x*1.14,isInscription?2.87:2.5,0,'#dcffff','#14283d');side.rotation.y=x*Math.PI/2;}
   return merged(g,'packet'+variant);
 }
 
 export function routerModel(variant=0){
   const g=new THREE.Group();box(g,2.08,.68,.66,0,.34,0,ink);box(g,2.05,.1,.72,0,.75,0,metal);
-  for(const x of [-.83,.83]){box(g,.07,.55,.08,x,.7,-.18,metal);sphere(g,.065,x,.97,-.18,red,8);}
-  // Slanted eyebrows and flashing eyes make the filter visibly grumpy.
-  for(const x of [-.48,.48]){box(g,.26,.10,.03,x,.59,.35,red);const b=box(g,.38,.055,.045,x,.72,.36,metal);b.rotation.z=x>0?.24:-.24;}
-  sign(g,['NONSTANDARD','SCRIPT TOO INTERESTING','TRANSACTION TOO LARGE'][variant%3],1.85,.31,0,.27,.37,'#ff8c97','#271a2c');
+  const exposed = variant === KEY_EXPOSURE;
+  for(const x of [-.83,.83]){box(g,.07,.55,.08,x,.7,-.18,metal);sphere(g,.065,x,.97,-.18,exposed?orange:red,8);}
+  if (exposed) {
+    // An open lock: the lifted right-hand end leaves a visible gap above the case.
+    const shackle = new THREE.Mesh(new THREE.TorusGeometry(.16, .036, 6, 20, Math.PI), yellow);
+    shackle.position.set(-.59, .67, .40); g.add(shackle);
+    box(g,.071,.14,.07,-.75,.62,.40,yellow);
+    box(g,.45,.26,.10,-.54,.41,.39,orange);
+    sphere(g,.043,-.54,.43,.46,ink,8);
+    box(g,.037,.063,.018,-.54,.39,.46,ink);
+    sign(g,'KEY EXPOSURE',1.26,.41,.27,.46,.39,'#ffdf9b','#45271e');
+  } else {
+    // Slanted eyebrows and flashing eyes make the filter visibly grumpy.
+    for(const x of [-.48,.48]){box(g,.26,.10,.03,x,.59,.35,red);const b=box(g,.38,.055,.045,x,.72,.36,metal);b.rotation.z=x>0?.24:-.24;}
+    sign(g,['NONSTANDARD','SCRIPT TOO INTERESTING','TRANSACTION TOO LARGE'][variant],1.85,.31,0,.27,.37,'#ff8c97','#271a2c');
+  }
   for(let x=-.7;x<=.7;x+=.23)box(g,.09,.06,.04,x,.07,.36,x>.1?red:cyan);
-  return merged(g,'policy-router');
+  return merged(g,exposed?'key-exposure':'policy-router');
 }
-function feeSpike(){
+export function feeSpike(rbf = false){
   const g=new THREE.Group();for(const x of [-1.02,1.02])box(g,.12,.99,.33,x,.5,0,metal);
+  if (rbf) {
+    // Two bids crossing in a narrow price chart above the hurdle's clearance.
+    box(g,2.19,.30,.35,0,1.10,0,ink);
+    const chart = (points: number[][], material: THREE.Material) => {
+      for (let i=1; i<points.length; i++) {
+        const [x0,y0]=points[i-1], [x1,y1]=points[i];
+        const bar=box(g,Math.hypot(x1-x0,y1-y0),.032,.025,(x0+x1)/2,(y0+y1)/2,.188,material);
+        bar.rotation.z=Math.atan2(y1-y0,x1-x0);
+      }
+    };
+    chart([[-1.04,1.01],[-.70,1.01],[-.66,1.15],[-.36,1.15]],orange);
+    chart([[-1.04,1.10],[-.85,1.10],[-.80,1.19],[-.36,1.19]],cyan);
+    chart([[.36,1.06],[.60,1.06],[.68,1.20],[1.04,1.20]],orange);
+    chart([[.36,1.14],[.78,1.14],[.84,1.09],[1.04,1.09]],cyan);
+    sign(g,'RBF WAR',.98,.31,0,1.10,.22,'#fff0b7','#532735');
+    return merged(g,'rbf-war');
+  }
   box(g,2.19,.22,.35,0,1.1,0,red);
   const heights=[.04,.07,.05,.10,.12,.08,.15];
   heights.forEach((h,i)=>box(g,.21,h,.18,-.81+i*.27,1.10+h/2,-.01,red));
   sign(g,'FEE SPIKE',1.6,.28,0,1.1,.19,'#fff1f1','#a51e49');return merged(g,'fee-spike');
 }
-function scanner(){
-  const g=new THREE.Group();for(const x of [-1.07,1.07]){box(g,.12,2.65,.3,x,1.325,0,metal);box(g,.05,2.4,.05,x,1.3,.18,red);}
+export function scanner(quantum = false){
+  const light = quantum ? purple : red;
+  const g=new THREE.Group();for(const x of [-1.07,1.07]){box(g,.12,2.65,.3,x,1.325,0,metal);box(g,.05,2.4,.05,x,1.3,.18,light);}
   box(g,2.3,.18,.3,0,2.55,0,ink);
-  sphere(g,.49,0,2.12,0,white);sphere(g,.28,0,2.12,.37,red);sphere(g,.13,0,2.12,.57,ink);
-  sign(g,'CHAIN SCAN',1.5,.3,0,1.48,.18,'#ffc2cb','#5b1e3c');
-  box(g,2.04,.055,.25,0,1.12,0,red);
-  return merged(g,'chain-scanner');
+  if (quantum) {
+    // The three orbital rings read as one qubit from the approaching lane.
+    for (const tilt of [0, Math.PI/3, -Math.PI/3]) {
+      const ring=new THREE.Mesh(new THREE.TorusGeometry(.45,.035,6,36),tilt===0?cyan:purple);
+      ring.scale.set(1.24,.48,1); ring.rotation.z=tilt; ring.position.set(0,2.10,.18); g.add(ring);
+    }
+    sphere(g,.13,0,2.10,.21,white);
+    sign(g,'QUANTUM WATCH',1.76,.33,0,1.48,.18,'#e9dcff','#302454');
+  } else {
+    sphere(g,.49,0,2.12,0,white);sphere(g,.28,0,2.12,.37,red);sphere(g,.13,0,2.12,.57,ink);
+    sign(g,'CHAIN SCAN',1.5,.3,0,1.48,.18,'#ffc2cb','#5b1e3c');
+  }
+  box(g,2.04,.055,.25,0,1.12,0,light);
+  return merged(g,quantum?'quantum-watch':'chain-scanner');
 }
 function bitcoinFaceTexture() {
   const canvas = document.createElement('canvas');

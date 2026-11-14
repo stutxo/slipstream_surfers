@@ -2,12 +2,13 @@
 // Light count, materials and meshes are all made up front; play only moves instances.
 import * as THREE from 'three';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { packetModel, routerModel, serverRack, droneModel, minerModel } from './models';
+import { packetModel, routerModel, feeSpike, scanner, serverRack, droneModel, minerModel } from './models';
+import { PACKET, KEY_EXPOSURE, RBF_WAR, QUANTUM_WATCH } from '../sim/obstacle-variants';
 import { Instanced } from './pools';
 import { Fx } from './fx';
 import { PlayerView } from './player';
 import { trackTexture, pavingTexture, groundTexture, skyTexture, glowTexture, powerTexture, rampTexture, HORIZON } from './textures';
-import { LANE_W, laneX, CAR_LEN, CAR_GAP, VIEW_AHEAD, OB, SLIPSTREAM_EXIT_GRACE } from '../config';
+import { LANE_W, laneX, CAR_LEN, CAR_GAP, VIEW_AHEAD, OB } from '../config';
 import type { Sim } from '../sim/sim';
 import type { SimEvent, PowerKind, Ob } from '../sim/types';
 
@@ -90,12 +91,17 @@ export class World {
       return o;
     };
     this.pools.train = new Instanced(node('train'), 60, s, { cast: true, receive: true });
-    for(let i=1;i<4;i++)this.pools['packet'+i]=new Instanced(packetModel(i),60,s,{cast:true,receive:true});
+    for (const variant of Object.values(PACKET)) {
+      if (variant !== PACKET.full) this.pools['packet'+variant]=new Instanced(packetModel(variant),60,s,{cast:true,receive:true});
+    }
     this.pools.low = new Instanced(node('low'), 24, s, { cast: true, receive: true });
     this.pools.low1=new Instanced(routerModel(1),24,s,{cast:true,receive:true});
     this.pools.low2=new Instanced(routerModel(2),24,s,{cast:true,receive:true});
+    this.pools['low'+KEY_EXPOSURE]=new Instanced(routerModel(KEY_EXPOSURE),24,s,{cast:true,receive:true});
     this.pools.hurdle = new Instanced(node('hurdle'), 24, s, { cast: true, receive: true });
+    this.pools['hurdle'+RBF_WAR]=new Instanced(feeSpike(true),24,s,{cast:true,receive:true});
     this.pools.overhead = new Instanced(node('overhead'), 24, s, { cast: true, receive: true });
+    this.pools['overhead'+QUANTUM_WATCH]=new Instanced(scanner(true),24,s,{cast:true,receive:true});
     this.pools.ramp = new Instanced(rampMesh(), 16, s, { cast: true, receive: true });
     const coin = node('coin');
     this.coins = new Instanced(coin, 320, s, { cast: false });
@@ -260,17 +266,17 @@ export class World {
       const x = laneX(o.lane);
       // Protected hazards stay visible, including those beyond the tunnel exit.
       if (o.kind === 'train' || o.kind === 'mtrain') {
+        const pool = this.pools['packet'+o.variant] ?? this.pools.train;
         for (let c = 0; c < o.cars; c++) {
           const dc = o.d0 + c * (CAR_LEN + CAR_GAP) + CAR_LEN / 2;
           m4.makeTranslation(x, 0, zOf(dc));
-          const variant=o.variant%4;
-          this.pools[variant===0?'train':'packet'+variant].add(m4);
+          pool.add(m4);
         }
         if (o.kind === 'mtrain') movers.push(o);
       } else {
         m4.makeTranslation(x, 0, zOf((o.d0 + o.d1) / 2));
-        const key=o.kind==='low'&&o.id%3!==0?'low'+o.id%3:o.kind;
-        this.pools[key].add(m4);
+        const pool = this.pools[o.kind+o.variant] ?? this.pools[o.kind];
+        pool.add(m4);
       }
     }
     for (const k in this.pools) this.pools[k].end();
@@ -338,9 +344,7 @@ export class World {
     this.tunnel.position.z = pd % 96;
     this.miner.visible=sim.power.slipstream>0 || sim.slipstreamExitGrace>0;
     // Pass between the mining banks during the exit shield, with an open view ahead.
-    this.miner.position.z=sim.power.slipstream>0
-      ? -12-sim.power.slipstream*12
-      : -12+(SLIPSTREAM_EXIT_GRACE-sim.slipstreamExitGrace)*sim.speed;
+    this.miner.position.z = -sim.minerOffset;
     this.drone.visible=!menu&&this.tunnelStrength<.5;
     this.drone.position.set(sim.x*.55-1.2,1.8+Math.sin(this.time*3)*.22,sim.alive?(sim.sinceStumble<4.5?1.5:3.3):.5);
     this.drone.rotation.set(.1,-.2+.2*Math.sin(this.time*2),Math.sin(this.time*4)*.08);

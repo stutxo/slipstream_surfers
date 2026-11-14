@@ -30,6 +30,7 @@ export class UI {
   screen: Screen = 'start';
   private hintTimer = 0;
   private toastTimer = 0;
+  private deliveryTimer = 0;
   touch = matchMedia('(pointer: coarse)').matches;
   private last = { score: -1, coins: -1, mult: -1, power: '' };
 
@@ -50,6 +51,7 @@ export class UI {
         </div>
         <div class="hint" id="hint"></div>
         <div class="toast" id="toast"></div>
+        <div class="delivery-receipt" id="delivery-receipt" role="status"></div>
       </div>
       <div class="flash" id="flash"></div>
       <section class="screen start" id="s-start">
@@ -69,6 +71,22 @@ export class UI {
             <p class="character-detail" id="character-detail" aria-live="polite"><b id="character-selected"></b><span id="character-subtitle"></span></p>
           </div>
           <button class="big" id="btn-play" data-k="play"></button>
+          <div id="start-missions">
+            <details class="mission-sheet" id="mission-sheet">
+              <summary><span id="mission-set">Missions</span><span id="mission-mult"></span></summary>
+              <ol id="mission-goals"></ol>
+              <p class="mission-reward" id="mission-reward"></p>
+              <details class="track-guide" id="track-guide">
+                <summary>Track guide</summary>
+                <dl>
+                  <dt>RBF war</dt><dd>Jump the dueling fee bids. RBF lets a sender propose a replacement transaction with a higher fee.</dd>
+                  <dt>Key exposure</dt><dd>Jump the checkpoint or switch cables. During the Coldcard multisig recovery, some users submitted rescue spends privately to keep them out of the public mempool.</dd>
+                  <dt>Quantum watch</dt><dd>Slide under the violet scanner. In a hypothetical short-exposure quantum attack, a pending spend can reveal a public key. A private route limits who sees it before confirmation.</dd>
+                  <dt>Inscription packets</dt><dd>Look for the wizard, punk and pixel cat. Take a ramp to ride their packets.</dd>
+                </dl>
+              </details>
+            </details>
+          </div>
           <p class="ctrl" id="ctrl"></p>
           <div class="row">
             <button class="chip" id="btn-lang" hidden></button><a class="chip link" href="https://slipstream.mara.com/" target="_blank" rel="noopener">SLIPSTREAM ↗</a>
@@ -81,6 +99,7 @@ export class UI {
         <div class="panel">
           <h2 data-k="paused"></h2>
           <button class="big" id="btn-resume" data-k="resume"></button>
+          <div id="pause-missions"></div>
           <button class="ghost" id="btn-restart" data-k="restart"></button>
           <button class="ghost" id="btn-home" data-k="home"></button>
         </div>
@@ -96,6 +115,7 @@ export class UI {
             <div><small data-k="best"></small><b id="r-best">0</b></div>
           </div>
           <button class="big" id="btn-again" data-k="again"></button>
+          <div id="over-missions"></div>
           <button class="ghost" id="btn-home2" data-k="home"></button>
         </div>
       </section>`;
@@ -181,6 +201,12 @@ export class UI {
     this.root.dataset.screen = s;
     for (const k of ['start', 'pause', 'over'] as const) this.el['s-' + k].classList.toggle('on', s === k);
     this.el.hud.classList.toggle('on', s === 'play' || s === 'pause');
+    if (s !== 'play') {
+      const sheet = this.el['mission-sheet'] as HTMLDetailsElement;
+      this.el[s + '-missions'].append(sheet);
+      sheet.open = s !== 'start';
+      (this.el['track-guide'] as HTMLDetailsElement).open = false;
+    }
     if (s !== 'play') this.hint('');
     if (s === 'start') this.el['btn-play'].focus({ preventScroll: true });
     if (s === 'over') this.el['btn-again'].focus({ preventScroll: true });
@@ -188,8 +214,47 @@ export class UI {
   }
 
   setStart(best: number, bank: number) {
+    this.clearRunMessages();
     this.el.best.textContent = String(best);
     this.el.bank.textContent = String(bank);
+  }
+
+  setMissions(set: number, multiplier: number, goals: ReadonlyArray<{ label: string; current: number; target: number }>) {
+    this.el['mission-set'].textContent = 'Missions · Set ' + set;
+    this.el['mission-mult'].textContent = '×' + multiplier + ' score';
+    this.el['mission-reward'].textContent = multiplier < 30
+      ? 'Complete all three to earn ×' + (multiplier + 1) + ' score.'
+      : 'Maximum base score multiplier reached.';
+    this.el['mission-goals'].replaceChildren(...goals.map(goal => {
+      const item = document.createElement('li');
+      const name = document.createElement('span');
+      const count = document.createElement('span');
+      name.textContent = goal.label;
+      count.textContent = goal.current + ' / ' + goal.target;
+      const bar = document.createElement('progress');
+      bar.max = goal.target;
+      bar.value = goal.current;
+      bar.setAttribute('aria-label', goal.label);
+      item.classList.toggle('complete', goal.current >= goal.target);
+      item.append(name, count, bar);
+      return item;
+    }));
+  }
+
+  confirmDelivery(sats: number) {
+    const receipt = this.el['delivery-receipt'];
+    window.clearTimeout(this.deliveryTimer);
+    receipt.textContent = 'Transaction confirmed · +' + sats + ' sats';
+    receipt.classList.add('on');
+    this.deliveryTimer = window.setTimeout(() => receipt.classList.remove('on'), 2400);
+  }
+
+  private clearRunMessages() {
+    window.clearTimeout(this.toastTimer);
+    window.clearTimeout(this.deliveryTimer);
+    this.el.toast.classList.remove('on');
+    this.el['delivery-receipt'].classList.remove('on');
+    this.el['delivery-receipt'].textContent = '';
   }
 
   hud(score: number, coins: number, mult: number, power: Record<PowerKind, number>) {

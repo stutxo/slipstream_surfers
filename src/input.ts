@@ -10,29 +10,45 @@ export function bindInput(target: HTMLElement, on: (a: Action) => void, canSwipe
   window.addEventListener('keydown', (e) => {
     const a = keys[e.code];
     if (!a) return;
-    if ((e.target as HTMLElement)?.tagName === 'BUTTON' && (e.code === 'Space' || e.code === 'Enter')) return;
+    const tag = (e.target as HTMLElement | null)?.tagName;
+    const activation = e.code === 'Space' || e.code === 'Enter';
+    if (activation && (tag === 'BUTTON' || tag === 'SUMMARY' || tag === 'A')) return;
+    if (tag === 'SUMMARY' && e.code.startsWith('Arrow')) return;
     e.preventDefault();
     if (e.repeat && a !== 'left' && a !== 'right') return;
     on(a);
   });
-  // A swipe is read when the finger lifts: from where it went down to where it came up, the longer axis
-  // decides the direction. One touch, one move; a touch that barely moves does nothing.
-  let id = -1, sx = 0, sy = 0;
-  const dist = () => Math.max(24, Math.min(window.innerWidth, window.innerHeight) * 0.05);
+  let pointerId: number | null = null;
+  let startX = 0, startY = 0, threshold = 0;
+  const cancelSwipe = () => { pointerId = null; };
   target.addEventListener('pointerdown', (e) => {
-    if (!canSwipe()) return;
-    id = e.pointerId;
-    sx = e.clientX;
-    sy = e.clientY;
-    try { target.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    if (!e.isPrimary || e.button !== 0 || pointerId !== null || !canSwipe()) return;
+    pointerId = e.pointerId;
+    startX = e.clientX;
+    startY = e.clientY;
+    threshold = Math.max(24, Math.min(window.innerWidth, window.innerHeight) * 0.05);
+    try { target.setPointerCapture(pointerId); } catch { /* Events inside the game still work. */ }
   });
-  target.addEventListener('pointerup', (e) => {
-    if (e.pointerId !== id) return;
-    id = -1;
-    const dx = e.clientX - sx, dy = e.clientY - sy, D = dist();
-    if (Math.abs(dx) < D && Math.abs(dy) < D) return;
+
+  function readSwipe(e: PointerEvent) {
+    if (e.pointerId !== pointerId) return;
+    if (!canSwipe()) { cancelSwipe(); return; }
+    const dx = e.clientX - startX, dy = e.clientY - startY;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < threshold) return;
+    cancelSwipe(); // Consume this gesture before dispatching the action.
     if (Math.abs(dx) > Math.abs(dy)) on(dx > 0 ? 'right' : 'left');
     else on(dy > 0 ? 'down' : 'up');
+  }
+  function endSwipe(e: PointerEvent) {
+    if (e.pointerId === pointerId) cancelSwipe();
+  }
+  target.addEventListener('pointermove', readSwipe);
+  target.addEventListener('pointerup', (e) => {
+    readSwipe(e); // A fast flick can end before the browser delivers a move event.
+    endSwipe(e);
   });
-  target.addEventListener('pointercancel', (e) => { if (e.pointerId === id) id = -1; });
+  target.addEventListener('pointercancel', endSwipe);
+  target.addEventListener('lostpointercapture', endSwipe);
+  window.addEventListener('blur', cancelSwipe);
+  return cancelSwipe;
 }

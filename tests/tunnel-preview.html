@@ -17,6 +17,9 @@
       <button type="button" id="shield">Exit shield</button>
       <button type="button" id="normal">Normal route</button>
       <button type="button" id="transition">Run transition</button>
+      <button type="button" id="inscriptions">Inscription gallery</button>
+      <button type="button" id="hazards">Security hazards</button>
+      <button type="button" id="receipt">Miner confirmation</button>
       <button type="button" id="pause-check">Pause / resume</button>
     </div>
     <output id="qa-state" aria-live="polite">Loading the real game renderer…</output>
@@ -31,6 +34,7 @@
     import { Sim } from '/src/sim/sim.ts';
     import { UI } from '/src/ui.ts';
     import { OB, trainLength } from '/src/config.ts';
+    import { PACKET, KEY_EXPOSURE, RBF_WAR, QUANTUM_WATCH } from '/src/sim/obstacle-variants.ts';
 
     const sourceDocument = new DOMParser().parseFromString(sourceHtml, 'text/html');
     for (const original of sourceDocument.querySelectorAll('style')) {
@@ -85,10 +89,40 @@
       sim.clearWorld();
       sim.speedOverride = 22;
       sim.start();
+      sim.speed=22;
       world.resetScenery();
+      ui.show('play');
       const obstacle = (kind,lane,d,cars=1,variant=0) => sim.addOb({
         kind,lane,d0:d,d1:d+(kind==='train'?trainLength(cars):OB[kind].depth),cars,variant
       });
+      if(mode==='inscriptions') {
+        phase='Inscription gallery';
+        obstacle('train',0,8,1,PACKET.wizard);
+        obstacle('train',1,11,1,PACKET.cat);
+        obstacle('train',2,8,1,PACKET.punk);
+        return;
+      }
+      if(mode==='hazards') {
+        phase='Security hazards';
+        obstacle('hurdle',0,7,1,RBF_WAR);
+        obstacle('overhead',1,11,1,QUANTUM_WATCH);
+        obstacle('low',2,7,1,KEY_EXPOSURE);
+        return;
+      }
+      if(mode==='receipt') {
+        // Follow an actual pickup through the full tunnel to its first payment.
+        // No ordinary coins in this scene: the HUD shows the exact reward.
+        phase='Miner confirmation';
+        sim.addPower('slipstream',1,.5,1.1);
+        obstacle('train',0,221,1,PACKET.wizard);
+        obstacle('train',2,224,1,PACKET.punk);
+        for(let frame=0;frame<120*12;frame++) {
+          sim.update(1/120);
+          const payment=sim.drainEvents().find(event=>event.type==='delivery');
+          if(payment) { ui.confirmDelivery(payment.sats); return; }
+        }
+        throw new Error('The runner passed the miner without a delivery event');
+      }
       // Different silhouettes remain in sight before, during and after expiry.
       obstacle('low',1,18);
       obstacle('train',0,28,3,2);
@@ -107,11 +141,9 @@
         sim.update(1/120); // Reach the real expiry path, including its safety timer.
         phase='Exit shield';
       } else {phase='Normal route';}
-      sim.speed=22;
       sim.drainEvents();
-      ui.show('play');
     }
-    for(const id of ['full','warning','shield','normal','transition'])document.getElementById(id).addEventListener('click',()=>reset(id));
+    for(const id of ['full','warning','shield','normal','transition','inscriptions','hazards','receipt'])document.getElementById(id).addEventListener('click',()=>reset(id));
     document.getElementById('pause-check').addEventListener('click',()=>{running=!running;});
     addEventListener('keydown',event=>{
       if(event.key==='ArrowLeft')sim.left();
@@ -128,7 +160,10 @@
       const dt=Math.min(.05,(now-previous)/1000);previous=now;
       if(running)sim.update(dt);
       const events=sim.drainEvents();
-      for(const event of events)world.event(event);
+      for(const event of events) {
+        world.event(event);
+        if(event.type==='delivery')ui.confirmDelivery(event.sats);
+      }
       world.player.update(sim,dt,events);
       world.sync(sim,dt,false);
       ui.hud(Math.floor(sim.score),sim.coins,sim.mult,sim.power);

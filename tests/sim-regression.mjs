@@ -6,16 +6,18 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
+import { checkSwipes } from './swipes.mjs';
 const require = createRequire(import.meta.url);
 const out = mkdtempSync(join(tmpdir(), 'slipstream-sim-'));
 try {
-  execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', 'src/config.ts', 'src/sim/sim.ts', 'tests/fixtures/route.ts', 'src/sim/track.ts', 'src/sim/rng.ts', 'src/sim/types.ts', '--target', 'ES2020', '--module', 'commonjs', '--moduleResolution', 'node', '--outDir', out, '--rootDir', '.', '--skipLibCheck', '--strict'], { stdio: 'inherit' });
+  execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', 'src/input.ts', 'src/config.ts', 'src/sim/sim.ts', 'tests/fixtures/route.ts', 'src/sim/track.ts', 'src/sim/rng.ts', 'src/sim/types.ts', '--target', 'ES2020', '--module', 'commonjs', '--moduleResolution', 'node', '--outDir', out, '--rootDir', '.', '--skipLibCheck', '--strict'], { stdio: 'inherit' });
+  checkSwipes(require(join(out, 'src/input.js')).bindInput);
   const { Sim } = require(join(out, 'src/sim/sim.js'));
   const { RoutePilot } = require(join(out, 'tests/fixtures/route.js'));
   const { solve } = require(join(out, 'src/sim/track.js'));
   const { speedAt, OB, trainLength, SPEED, CPFP_SPEED, SLIPSTREAM_EXIT_GRACE, PLAYER } = require(join(out, 'src/config.js'));
-  const fresh = () => {
-    const s = new Sim(1); s.noSpawn = true; s.reset(1, false); s.clearWorld(); s.speedOverride = 12; s.start(); return s;
+  const fresh = (savedMissions) => {
+    const s = new Sim(1, savedMissions); s.noSpawn = true; s.reset(1, false); s.clearWorld(); s.speedOverride = 12; s.start(); return s;
   };
   const runTo = (s, d, control = () => {}) => {
     let guard = 0;
@@ -40,6 +42,65 @@ try {
   const advanceTo = (s, time, dt) => {
     while (s.alive && s.time < time - 1e-8) s.update(Math.min(dt, time - s.time));
   };
+  for (const fps of [25, 30, 60, 120]) {
+    const delivery = fresh();
+    delivery.power.cpfp = .6; // Speed changes between power expiry and miner passage.
+    delivery.power.slipstream = .25;
+    while (delivery.power.slipstream > 0) delivery.update(1 / fps);
+    const minerAt = delivery.d + delivery.minerOffset;
+    assert.equal(delivery.coins, 0, 'delivery pays at the miner, not on tunnel expiry');
+    while (delivery.d < minerAt) {
+      assert.equal(delivery.coins, 0);
+      assert(Math.abs(delivery.d + delivery.minerOffset - minerAt) < 1e-9);
+      delivery.update(1 / fps);
+    }
+    assert.equal(delivery.coins, 21, 'arriving at the miner awards exactly 21 sats');
+    advanceTo(delivery, 3, 1 / fps);
+    assert.equal(delivery.coins, 21);
+    assert.deepEqual(delivery.drainEvents().filter(e => e.type === 'delivery'), [{ type: 'delivery', sats: 21 }]);
+    assert.equal(delivery.missions.state.pickups, 0, 'delivery payout is separate from sat pickups');
+    assert.equal(delivery.missions.state.deliveries, 1);
+  }
+  const interrupted = fresh();
+  interrupted.power.slipstream = .01;
+  interrupted.update(.05);
+  interrupted.reset(4, false); interrupted.clearWorld(); interrupted.start();
+  runTo(interrupted, 30);
+  assert.equal(interrupted.coins, 0, 'restart cancels a pending miner payout');
+
+  const rideRack = (s, roofCoins) => {
+    ob(s, 'ramp', 5);
+    s.addOb({ kind: 'train', lane: 1, d0: 12, d1: 52, variant: 2, cars: 6 });
+    for (let i = 0; i < roofCoins; i++) s.addCoin(1, 15 + i * 2, OB.train.yt + .85);
+    runTo(s, 48);
+  };
+  const progress = fresh();
+  rideRack(progress, 7);
+  const restored = fresh(JSON.parse(JSON.stringify(progress.missions.state)));
+  rideRack(restored, 6);
+  assert.equal(restored.missions.state.rooftopBest, 7, 'best single-run roof count persists without adding different runs');
+  assert.equal(restored.missions.state.pickups, 13, 'ordinary pickups accumulate across runs');
+
+  const roofMagnet = fresh();
+  roofMagnet.addOb({ kind: 'train', lane: 2, d0: 5, d1: 35, variant: 2, cars: 4 });
+  roofMagnet.addCoin(2, 10, OB.train.yt + .85);
+  roofMagnet.power.magnet = 2; runTo(roofMagnet, 20);
+  assert.equal(roofMagnet.coins, 1);
+  assert.equal(roofMagnet.missions.state.rooftopBest, 0, 'magnet snatching a roof sat from the ground does not count as surfing');
+
+  const ready = fresh({ set: 1, rooftopBest: 0, deliveries: 1, pickups: 49 });
+  rideRack(ready, 10);
+  assert.equal(ready.baseMult, 2, 'finishing the three goals raises the base multiplier in play');
+  assert.deepEqual(ready.missions.state, { set: 2, rooftopBest: 0, deliveries: 0, pickups: 0 });
+  assert.deepEqual(ready.drainEvents().filter(e => e.type === 'level'), [{ type: 'level', set: 1, mult: 2 }]);
+  ready.reset(1, false); assert.equal(ready.baseMult, 2);
+  ready.power.double = 1; assert.equal(ready.mult, 4, 'batching doubles the earned base multiplier');
+  const maxed = fresh({ set: 30, rooftopBest: 40, deliveries: 4, pickups: 199 });
+  maxed.addCoin(1, 1, .85); runTo(maxed, 4);
+  assert.equal(maxed.missions.state.set, 31, 'new mission sets remain playable at the cap');
+  assert.equal(maxed.baseMult, 30);
+  maxed.power.double = 1; assert.equal(maxed.mult, 60);
+
   for (const dt of [1 / 25, 1 / 30, 1 / 60, 1 / 120]) for (const boosted of [false, true]) {
     const label = `${Math.round(1 / dt)} fps${boosted ? ' + CPFP' : ''}`;
     const exit = fresh(); exit.speedOverride = SPEED.max;
@@ -177,5 +238,5 @@ try {
     }
     assert(s.alive && s.d >= 270, 'opening survives CPFP (' + CPFP_SPEED + 'x) at dt=' + dt);
   }
-  console.log(JSON.stringify({ ok: true, checks: 'collision, powers, fair tunnel exit at 25/30/60/120 fps with CPFP, roof support, early density, orphan ramps, 20 real generated routes, CPFP opening', routeRuns, generatedRoutes: routes.length, earlyAverages: Object.fromEntries(['convoys', 'racks', 'ramps'].map(k => [k, opening.reduce((sum, o) => sum + o[k], 0) / opening.length])) }, null, 2));
+  console.log(JSON.stringify({ ok: true, checks: 'swipes, collision, powers, miner payout and clear tunnel exits at 25/30/60/120 fps with CPFP, rooftop pickups, mission persistence and multiplier cap, roof support, early density, orphan ramps, 20 generated routes, CPFP opening', routeRuns, generatedRoutes: routes.length, earlyAverages: Object.fromEntries(['convoys', 'racks', 'ramps'].map(k => [k, opening.reduce((sum, o) => sum + o[k], 0) / opening.length])) }, null, 2));
 } finally { rmSync(out, { recursive: true, force: true }); }
