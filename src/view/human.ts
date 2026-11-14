@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import type { CharacterId } from '../characters';
-import { addGlamHair, addTiaraAndEarrings, addGlamNecklaces, addGlamWrist } from './glam';
+import { addGlamHair, addTiaraAndEarrings, addGlamNecklaces, addGlamBangle } from './glam';
 import { addBackpack } from './backpack';
 import { addPodcastMic, addKeyboard } from './props';
 
@@ -187,7 +187,7 @@ export function makeHuman(id: HumanId): RunnerParts {
     if(!isIFD)mesh(arm,new THREE.CapsuleGeometry(.092,.08,5,12),cloth,0,-.06,0);
     oval(arm,complexion,0,-.398,-.025,.082,.10,.075);
     oval(arm,complexion,-side*.061,-.369,-.059,.035,.049,.04);
-    if(isIFD) addGlamWrist(arm,side===1);
+    if(isIFD && side===1) addGlamBangle(arm);
     if(isIFD && side===-1) addPodcastMic(arm);
     if(id==='portlandhodl' && side===1) addKeyboard(arm);
     arms.push(arm);

@@ -4,21 +4,19 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const charcoal = new THREE.MeshPhongMaterial({ color: '#20232a', shininess: 45 });
-const foam = new THREE.MeshPhongMaterial({ color: '#11141a', shininess: 8, specular: '#3c424a' });
+const foam = new THREE.MeshPhongMaterial({ color: '#353942', shininess: 7, specular: '#5f6269' });
 const grille = new THREE.MeshPhongMaterial({ color: '#414650', shininess: 70 });
 const metal = new THREE.MeshPhongMaterial({ color: '#9ba3ad', shininess: 115 });
-const gold = new THREE.MeshPhongMaterial({ color: '#d1a744', shininess: 105 });
 const keycap = new THREE.MeshPhongMaterial({ color: '#e5e8ee', shininess: 38 });
 const modifier = new THREE.MeshPhongMaterial({ color: '#687181', shininess: 42 });
 const orange = new THREE.MeshPhongMaterial({ color: '#ff862b', shininess: 45 });
 
-const micHandle = new THREE.CylinderGeometry(.031, .026, .155, 14);
-const micNeck = new THREE.CylinderGeometry(.037, .031, .045, 14);
-const micCapsule = new THREE.CapsuleGeometry(.063, .105, 6, 16);
-const micCollar = new THREE.CylinderGeometry(.040, .040, .014, 16);
-const micBase = new THREE.CylinderGeometry(.030, .030, .012, 14);
-const micBadge = new RoundedBoxGeometry(.036, .047, .009, 2, .005);
-const micLed = new THREE.SphereGeometry(.007, 8, 6);
+const micGrip = new THREE.CylinderGeometry(.032, .029, .14, 16);
+const micBarrel = new THREE.CylinderGeometry(.088, .077, .17, 24);
+const micWindscreen = new THREE.CapsuleGeometry(.096, .107, 8, 24);
+const micCollar = new THREE.CylinderGeometry(.098, .095, .014, 24);
+const micBase = new THREE.CylinderGeometry(.078, .073, .014, 24);
+const micPivot = new THREE.CylinderGeometry(.023, .023, .019, 16).rotateZ(Math.PI / 2);
 const deck = new RoundedBoxGeometry(.62, .24, .041, 3, .013);
 const deckInset = new RoundedBoxGeometry(.592, .214, .008, 2, .009);
 
@@ -28,13 +26,12 @@ function mergePieces(pieces: THREE.BufferGeometry[]): THREE.BufferGeometry {
   return geometry;
 }
 
-// Shallow hoops make the microphone read as a mesh grille at preview scale.
-const micGrille = mergePieces(Array.from({ length: 5 }, (_, index) => {
-  const ring = new THREE.TorusGeometry(.0635, .0024, 4, 16);
-  ring.rotateX(Math.PI / 2);
-  ring.translate(0, .121 + index * .023, -.065);
-  return ring;
-}));
+// U-shaped suspension bracket around the lower barrel of the broadcast mic.
+const micYokePath = [
+  [-.115, .184], [-.115, .087], [-.100, .050], [-.068, .035],
+  [0, .035], [.068, .035], [.100, .050], [.115, .087], [.115, .184],
+].map(([x, y]) => new THREE.Vector3(x, y, 0));
+const micYoke = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(micYokePath), 28, .0125, 8, false);
 
 const keyPieces: THREE.BufferGeometry[] = [];
 const modifierPieces: THREE.BufferGeometry[] = [];
@@ -76,15 +73,20 @@ export function addPodcastMic(arm: THREE.Group): void {
   microphone.name = 'ifd-podcast-mic';
   microphone.position.set(0, -.398, -.025);
   arm.add(microphone);
-  // The palm wraps around the handle; the capsule rises above the thumb.
-  mesh(microphone, micHandle, charcoal, 0, 0, -.065);
-  mesh(microphone, micNeck, metal, 0, .084, -.065);
-  mesh(microphone, micCapsule, foam, 0, .17, -.065);
-  mesh(microphone, micCollar, gold, 0, .100, -.065);
-  mesh(microphone, micBase, metal, 0, -.080, -.065);
-  mesh(microphone, micGrille, grille);
-  mesh(microphone, micBadge, charcoal, 0, .034, -.098);
-  mesh(microphone, micLed, orange, 0, .045, -.105);
+  // Hold the bracket below the microphone, with the windscreen angled toward the mouth.
+  const assembly = new THREE.Group();
+  assembly.position.z = -.052;
+  assembly.rotation.z = -.21;
+  microphone.add(assembly);
+  mesh(assembly, micGrip, charcoal, 0, -.036);
+  mesh(assembly, micYoke, metal);
+  mesh(assembly, micBarrel, grille, 0, .157);
+  mesh(assembly, micBase, charcoal, 0, .073);
+  mesh(assembly, micWindscreen, foam, 0, .302);
+  mesh(assembly, micCollar, metal, 0, .236);
+  for (const side of [-1, 1]) {
+    mesh(assembly, micPivot, grille, side * .109, .178);
+  }
 }
 
 export function addKeyboard(arm: THREE.Group): void {

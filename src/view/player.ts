@@ -312,8 +312,12 @@ export class PlayerView {
     if(!prop) return;
     const arm = parts.arms[prop.arm];
     const bounce = Math.sin(phase) * (running ? .07 : .025);
-    arm.rotation.set(.65, 0,
-      (prop.kind === 'microphone' ? .85 : .12) + bounce + (air ? .12 : 0));
+    if (prop.kind === 'microphone') {
+      // Lift the mic beside her shoulder, clear of her black outfit and her face.
+      arm.rotation.set(1.04, 0, -.62 + bounce);
+    } else {
+      arm.rotation.set(.65, 0, .12 + bounce + (air ? .12 : 0));
+    }
     // Keep the mic upright and keyboard level while the palm follows the arm.
     prop.object.quaternion.copy(arm.quaternion).invert();
   }

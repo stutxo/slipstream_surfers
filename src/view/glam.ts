@@ -1,10 +1,12 @@
-// IFD's feathered hair and jewelry are part of the animated rig, including the wristwatch.
+// IFD's hair, tiara and jewelry follow the character rig.
 import * as THREE from 'three';
 
-const hairRoot = new THREE.MeshPhongMaterial({ color: '#86734d', shininess: 42 });
-const hairLow = new THREE.MeshPhongMaterial({ color: '#aa915d', shininess: 48 });
-const hairGold = new THREE.MeshPhongMaterial({ color: '#cbb47c', shininess: 60, specular: '#e6d5ac' });
-const hairLight = new THREE.MeshPhongMaterial({ color: '#e1ca92', shininess: 65, specular: '#fff0ce' });
+const hairMaterial = new THREE.MeshPhongMaterial({
+  vertexColors: true, shininess: 24, specular: '#43362b', side: THREE.DoubleSide,
+});
+const roots = new THREE.Color('#835e42');
+const honey = new THREE.Color('#cba46d');
+const blonde = new THREE.Color('#e4c38a');
 const gold = new THREE.MeshPhongMaterial({ color: '#f1c34f', shininess: 125, specular: '#fff7cf', emissive: '#382400', emissiveIntensity: .2 });
 const diamond = new THREE.MeshPhongMaterial({ color: '#f4fbff', shininess: 150, specular: '#ffffff', emissive: '#748ba0', emissiveIntensity: .12 });
 const sphere = new THREE.SphereGeometry(1, 20, 14);
@@ -20,58 +22,87 @@ function wire(parent:THREE.Object3D,points:number[][],radius=.011,material:THREE
   return mesh(parent,new THREE.TubeGeometry(curve(points),24,radius,7,false),material);
 }
 
-// Tapered, flattened locks curve away from the face and flick outward at the tips.
-// This keeps the feathered silhouette distinct from the earlier straight hanging locks.
-function feather(parent:THREE.Object3D,points:number[][],width:number,depth:number,material:THREE.Material) {
-  const path=curve(points),segments=20,sides=8,frames=path.computeFrenetFrames(segments,false);
-  const positions:number[]=[],indices:number[]=[];
-  for(let i=0;i<=segments;i++) {
-    const t=i/segments,p=path.getPointAt(t);
-    const taper=(.62+.38*Math.sin(Math.PI*t))*(1-.94*Math.pow(t,2));
-    for(let j=0;j<sides;j++) {
-      const angle=j/sides*Math.PI*2;
-      const v=p.clone().addScaledVector(frames.normals[i],Math.cos(angle)*width*taper).addScaledVector(frames.binormals[i],Math.sin(angle)*depth*taper);
-      positions.push(v.x,v.y,v.z);
-      if(i<segments) {const a=i*sides+j,b=i*sides+(j+1)%sides,c=a+sides,d=b+sides;indices.push(a,b,c,b,d,c);}
+// One continuous surface covers the scalp and falls over the shoulders. Each
+// column follows the same lock from the off-centre part to its tapered end.
+export function addGlamHair(head: THREE.Group) {
+  const columns = 192, crownRows = 18, lengthRows = 15;
+  const positions: number[] = [], colors: number[] = [], indices: number[] = [];
+  const color = new THREE.Color();
+  const smooth = THREE.MathUtils.smoothstep;
+  const lerp = THREE.MathUtils.lerp;
+  // A shared pole and wrapped columns keep the crown and back seamless.
+  positions.push(.095, .394, -.045);
+  colors.push(roots.r, roots.g, roots.b);
+  for (let row = 1; row <= crownRows + lengthRows; row++) {
+    const crown = Math.min(1, row / crownRows);
+    const length = Math.max(0, (row - crownRows) / lengthRows);
+    for (let column = 0; column < columns; column++) {
+      const angle = 2 * Math.PI * column / columns - Math.PI;
+      const side = Math.sin(angle), back = (1 - Math.cos(angle)) / 2;
+      // The heavy sweep falls by one temple. The other side sits behind the ear.
+      const temple = angle < 0 ? .61 : .91;
+      const curtain = smooth(Math.abs(angle), temple, temple + .53);
+      const flow = angle + .19 * (1 - crown) + .07 * length * Math.sin(2 * angle + 3 * length);
+      // The hairline rises at the part and curves diagonally toward the fuller side.
+      const partLift = Math.exp(-((angle - .43) ** 2) / .18);
+      const fringe = .80 - .19 * partLift - .39 * side + .035 * Math.sin(6 * angle);
+      const phi = crown * lerp(fringe, Math.PI / 2, curtain);
+      const volume = Math.sin(phi);
+      const broad = Math.cos(15 * angle + 1.4 * Math.sin(4 * angle));
+      const strands = Math.cos(31 * angle + 1.8 * Math.sin(5 * angle));
+      const fine = Math.cos(59 * angle + 1.5 * Math.sin(6 * angle));
+      const ridge = volume * (.008 * broad + .004 * strands);
+      const forelock = Math.exp(-((angle + .18) ** 2) / .35);
+      const sweep = (Math.max(0, -side) * .030 + forelock * .042) * Math.sin(Math.PI * crown);
+      const taper = 1 - curtain * (.14 * length + .036 * Math.sin(2 * Math.PI * length));
+      const crownOffset = .095 * Math.pow(Math.cos(phi), 2);
+      // Let the short hairline blend into the forehead while longer layers hang free.
+      const hairline = (1 - curtain) * length;
+      const x = crownOffset + (.365 + ridge + sweep) * volume * Math.sin(flow) * taper * (1 - .11 * hairline);
+      const wave = .016 * Math.sin(2 * angle + 5 * length) * length;
+      const z = lerp(-.045, .020, crown) - (.317 + ridge) * volume * Math.cos(flow) * taper
+        - .11 * length * curtain * (1 - back) + wave * curtain + .047 * hairline;
+      const tip = .515 + .028 * broad + .018 * strands + .028 * side;
+      const y = .394 * Math.cos(phi) + sweep - length * lerp(.030, tip, curtain);
+      positions.push(x, y, z);
+      // Vary colour along the locks, including the crown facing the chase camera.
+      const shade = .44 + .21 * broad + .17 * strands + .055 * fine;
+      const grownOut = smooth(crown + length, .04, 1.12);
+      color.copy(roots).lerp(honey, grownOut * (.68 + .32 * shade));
+      color.lerp(blonde, shade * smooth(crown + length, .10, .94) * (.72 + .22 * length));
+      colors.push(color.r, color.g, color.b);
+    }
+    const start = 1 + (row - 1) * columns;
+    for (let column = 0; column < columns; column++) {
+      const current = start + column, next = start + (column + 1) % columns;
+      if (row === 1) indices.push(0, next, current);
+      else indices.push(current - columns, next - columns, current, next - columns, next, current);
     }
   }
-  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.setIndex(indices);geometry.computeVertexNormals();
-  return mesh(parent,geometry,material);
-}
-
-export function addGlamHair(head:THREE.Group) {
-  const hair=new THREE.Group();hair.name='ifd-feathered-hair';head.add(hair);
-  oval(hair,hairRoot,0,.025,.10,.36,.39,.29);
-  // Back volume falls to the shoulders, with layered waves instead of straight ropes.
-  for(let i=-3;i<=3;i++) {
-    const x=i*.082,side=i<0?-1:1;
-    feather(hair,[[x,.26,.24],[x*1.25,.02,.34],[x*1.30,-.27,.33],[x+side*.11,-.47,.22]],.09,.055,i%2?hairLow:hairGold);
-  }
-  for(const side of [-1,1]) {
-    // Feathered side layers fan out and sweep back, the recognizable 1970s shape.
-    for(let i=0;i<5;i++) {
-      const y=.22-i*.105;
-      feather(hair,[[side*.22,y+.08,-.075],[side*.35,y+.055,-.11],[side*(.43+i*.012),y-.03,.005],[side*(.48+i*.01),y+.015,.13]],.105-i*.007,.052,i%2?hairGold:hairLight);
-    }
-    // Longer outer layers curl past the shoulders, keeping the feathered cut full.
-    for(let i=0;i<2;i++) {
-      feather(hair,[[side*.31,.12,.10],[side*(.40+i*.045),-.10,.14],[side*(.43+i*.04),-.34,.17],[side*(.51+i*.025),-.43+i*.025,.24]],.09,.048,i?hairLight:hairGold);
-    }
-    // A soft center part opens above the brows; no solid swoop across the forehead.
-    for(let i=0;i<3;i++) {
-      feather(hair,[[side*(.025+i*.035),.33+i*.016,-.10],[side*.16,.365+i*.01,-.17],[side*.29,.28-i*.025,-.16],[side*.39,.18-i*.07,-.015]],.075,.036,i===1?hairLight:hairGold);
-    }
-  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  const hair = mesh(head, geometry, hairMaterial);
+  hair.name = 'ifd-side-parted-hair';
 }
 
 export function addTiaraAndEarrings(head:THREE.Group) {
   const tiara=new THREE.Group();tiara.name='ifd-tiara';head.add(tiara);
+  // A fitted gold band follows the curved crown on both temples.
+  const bandHeight = (x:number) => .330 - .105 * (x / .305) ** 2;
   const band:number[][]=[];
-  for(let i=0;i<=16;i++) {const x=-.29+i*.58/16;band.push([x,.355+Math.abs(x)*.08,-.205+Math.pow(x/.29,2)*.10]);}
-  wire(tiara,band,.016);
-  wire(tiara,band.map(p=>[p[0],p[1]+.032,p[2]-.006]),.009);
+  for(let i=0;i<=32;i++) {
+    const angle = (i / 32 - .5) * 1.4 * Math.PI;
+    const x = .305 * Math.sin(angle);
+    band.push([x, bandHeight(x), -.010 - .179 * Math.cos(angle)]);
+  }
+  wire(tiara,band,.012);
+  wire(tiara,band.map(([x,y,z])=>[x,y+.018,z-.003]),.007);
   for(let i=-2;i<=2;i++) {
-    const x=i*.107,base=.388,peak=base+.14-.035*Math.abs(i),z=-.218+Math.abs(i)*.025;
+    const x=i*.107,base=bandHeight(x)+.013,peak=base+.115-.018*Math.abs(i);
+    const z=-.014-.179*Math.sqrt(1-(x/.305)**2);
     wire(tiara,[[x-.05,base,z],[x,peak,z-.012],[x+.05,base,z]],.009);
     const gem=mesh(tiara,new THREE.OctahedronGeometry(i===0?.044:.031),diamond,x,peak,z-.012);gem.scale.set(1,1.3,.55);
     oval(tiara,gold,x,peak+.048, z-.012,.014,.014,.014);
@@ -90,37 +121,7 @@ export function addGlamNecklaces(torso:THREE.Group) {
   for(const side of [-1,1])oval(torso,gold,side*.09,-.04,-.205,.012,.012,.01);
 }
 
-let dialMaterial:THREE.MeshBasicMaterial|undefined;
-function rolexDial() {
-  if(dialMaterial)return dialMaterial;
-  const canvas=document.createElement('canvas');canvas.width=canvas.height=256;
-  const g=canvas.getContext('2d')!;g.fillStyle='#103b2d';g.fillRect(0,0,256,256);
-  g.strokeStyle='#f2d47d';g.fillStyle='#f2d47d';
-  for(let i=0;i<12;i++) {const a=i/12*Math.PI*2;g.save();g.translate(128+Math.sin(a)*99,128-Math.cos(a)*99);g.rotate(a);g.fillRect(-4,-10,8,20);g.restore();}
-  // Crown emblem, green dial, gold indices and date window read as a classic gold Rolex.
-  g.beginPath();g.moveTo(104,62);g.lineTo(99,42);g.lineTo(114,51);g.lineTo(128,32);g.lineTo(142,51);g.lineTo(157,42);g.lineTo(152,62);g.closePath();g.fill();g.fillRect(108,66,40,5);
-  g.font='bold 20px serif';g.textAlign='center';g.fillText('ROLEX',128,94);
-  g.fillStyle='#fff8df';g.fillRect(189,116,35,25);g.fillStyle='#16211d';g.font='bold 17px sans-serif';g.fillText('21',206,135);
-  g.strokeStyle='#fff4bd';g.lineCap='round';g.lineWidth=8;g.beginPath();g.moveTo(128,128);g.lineTo(94,91);g.moveTo(128,128);g.lineTo(182,86);g.stroke();
-  g.lineWidth=2;g.beginPath();g.moveTo(128,143);g.lineTo(126,50);g.stroke();
-  g.fillStyle='#f2d47d';g.beginPath();g.arc(128,128,7,0,Math.PI*2);g.fill();
-  const map=new THREE.CanvasTexture(canvas);map.colorSpace=THREE.SRGBColorSpace;
-  dialMaterial=new THREE.MeshBasicMaterial({map,toneMapped:false});return dialMaterial;
-}
-
-export function addGlamWrist(arm:THREE.Group,watch:boolean) {
-  if(!watch) {
-    for(const y of [-.28,-.325,-.37]) {const bangle=mesh(arm,new THREE.TorusGeometry(.071,.012,8,22),gold,0,y,0);bangle.rotation.x=Math.PI/2;}
-    return;
-  }
-  const accessory=new THREE.Group();accessory.name='ifd-rolex';arm.add(accessory);
-  // Segmented gold bracelet follows the wrist, with an oversized dial for arcade readability.
-  for(let i=0;i<12;i++) {
-    const a=i/12*Math.PI*2;
-    const link=mesh(accessory,new THREE.BoxGeometry(.041,.068,.021),gold,Math.sin(a)*.069,-.315,Math.cos(a)*.069);link.rotation.y=a;
-  }
-  const bezel=mesh(accessory,new THREE.CylinderGeometry(.085,.085,.033,32),gold,0,-.315,-.084);bezel.rotation.x=Math.PI/2;
-  for(let i=0;i<24;i++) {const a=i/24*Math.PI*2;const flute=mesh(accessory,new THREE.BoxGeometry(.008,.015,.012),gold,Math.sin(a)*.079,-.315+Math.cos(a)*.079,-.106);flute.rotation.z=-a;}
-  const face=mesh(accessory,new THREE.CircleGeometry(.067,32),rolexDial(),0,-.315,-.104);face.rotation.y=Math.PI;
-  const windingCrown=mesh(accessory,new THREE.CylinderGeometry(.019,.019,.022,12),gold,.094,-.315,-.084);windingCrown.rotation.z=Math.PI/2;
+export function addGlamBangle(arm: THREE.Group) {
+  const bangle = mesh(arm, new THREE.TorusGeometry(.07, .009, 8, 24), gold, 0, -.316, 0);
+  bangle.rotation.x = Math.PI / 2;
 }
