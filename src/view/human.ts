@@ -6,7 +6,8 @@ import type { CharacterId } from '../characters';
 import { addGlamHair, addTiaraAndEarrings, addGlamNecklaces, addGlamBangle } from './glam';
 import { addBackpack } from './backpack';
 import { addPeterHair } from './peter-hair';
-import { addPeterBeard, addPeterNose, addAviators } from './peter-face';
+import { addPeterBeard, addPeterNose } from './peter-face';
+import { addPeterExpression, addPeterGlasses } from './peter-glasses';
 import { addPodcastMic, addKeyboard } from './props';
 
 export interface RunnerParts {
@@ -96,29 +97,23 @@ function head(parent: THREE.Group, id: HumanId, eyebrows: THREE.Mesh[]) {
   if (isPeter) {
     addPeterHair(h);
     addPeterBeard(h);
-    addAviators(h);
+    addPeterNose(h, complexion);
+    addPeterExpression(h);
+    addPeterGlasses(h);
+    return;
   }
   if (isIFD) addTiaraAndEarrings(h);
   for (const side of [-1,1]) {
-    if (!isPeter) {
-      oval(h,white,side*.125,.055,-.248,isIFD?.073:.083,isIFD?.052:.061,isIFD?.031:.04);
-      oval(h,id==='portlandhodl'?cyan:new THREE.MeshPhongMaterial({color:'#5b7475'}),side*.125,.055,isIFD?-.274:-.282,isIFD?.031:.038,isIFD?.035:.044,.015);
-      oval(h,black,side*.125,.055,isIFD?-.287:-.296,isIFD?.015:.018,isIFD?.023:.027,.008);
-      oval(h,white,side*.125-.011,.072,isIFD?-.295:-.304,.009,.011,.005);
-    }
-    const browY = isPeter ? .145 : .155;
-    const brow=box(h,brown,side*.126,browY,-.231,.13,isPeter ? .018 : .029,.03,.012);
-    brow.rotation.z=side*.1; brow.userData.restY=browY; eyebrows.push(brow);
+    oval(h,white,side*.125,.055,-.248,isIFD?.073:.083,isIFD?.052:.061,isIFD?.031:.04);
+    oval(h,id==='portlandhodl'?cyan:new THREE.MeshPhongMaterial({color:'#5b7475'}),side*.125,.055,isIFD?-.274:-.282,isIFD?.031:.038,isIFD?.035:.044,.015);
+    oval(h,black,side*.125,.055,isIFD?-.287:-.296,isIFD?.015:.018,isIFD?.023:.027,.008);
+    oval(h,white,side*.125-.011,.072,isIFD?-.295:-.304,.009,.011,.005);
+    const brow=box(h,brown,side*.126,.155,-.231,.13,.029,.03,.012);
+    brow.rotation.z=side*.1; brow.userData.restY=.155; eyebrows.push(brow);
     if (id==='portlandhodl') {
       const streak=box(h,cyan,side*.205,.055,-.3,.24,.018,.015,.004);streak.rotation.z=-side*.10;
       oval(h,cyan,side*.125,.055,-.31,.045,.024,.01);
     }
-  }
-  if (isPeter) {
-    addPeterNose(h, complexion);
-    tube(h,new THREE.MeshPhongMaterial({color:'#915b49',shininess:10}),
-      [[-.083,-.149,-.243],[-.029,-.150,-.255],[.037,-.151,-.255],[.089,-.146,-.242]],.004);
-    return;
   }
   oval(h,complexion,0,-.03,isIFD?-.266:-.277,isIFD?.042:.055,isIFD?.061:.078,isIFD?.047:.072);
   // Smiling mouths are tubes and teeth, so the face remains an actual 3D model.

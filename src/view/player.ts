@@ -150,10 +150,12 @@ export class PlayerView {
   private crashT = 0;
   private time = 0;
   private tiara: THREE.Object3D | undefined;
+  private peterCap: THREE.Object3D | undefined;
 
   constructor(_gltf: GLTF, scene: THREE.Scene) {
     this.characters = { transaction: makePacket(), portlandhodl: makeHuman('portlandhodl'), ifd: makeHuman('ifd'), 'peter-todd': makeHuman('peter-todd') };
     this.tiara = this.characters.ifd.group.getObjectByName('ifd-tiara');
+    this.peterCap = this.characters['peter-todd'].group.getObjectByName('peter-baseball-cap');
     this.packet = this.characters.transaction;
     this.model = this.packet.group;
     this.root.name = 'transaction-runner';
@@ -226,6 +228,8 @@ export class PlayerView {
     const data = ctx.createImageData(size, size);
     const portraits = {} as Record<CharacterId, string>;
     const helmetVisible = this.helmet.visible; this.helmet.visible = false;
+    const capVisible = this.peterCap?.visible;
+    if (this.peterCap) this.peterCap.visible = true;
     try {
       renderer.autoClear = true;
       renderer.setClearColor(0x000000, 0);
@@ -243,7 +247,7 @@ export class PlayerView {
           rig.shell.rotation.set(0,0,0); this.pose(rig,0,false);
           if (id === 'transaction') { camera.position.set(-.36,1.27,-2.65); camera.lookAt(0,1.0,0); }
           else if (id === 'ifd') { camera.position.set(-.38,1.62,-2.75); camera.lookAt(0,1.34,0); }
-          else if (id === 'peter-todd') { camera.position.set(-1.02,1.60,-2.18); camera.lookAt(0,1.34,0); }
+          else if (id === 'peter-todd') { camera.position.set(1.08,1.62,-2.24); camera.lookAt(0,1.38,0); }
           else { camera.position.set(-.38,1.5,-2.55); camera.lookAt(0,1.25,0); }
           renderer.render(scene,camera);
           renderer.readRenderTargetPixels(target,0,0,size,size,pixels);
@@ -260,6 +264,7 @@ export class PlayerView {
       }
     } finally {
       this.helmet.visible = helmetVisible;
+      if (this.peterCap && capVisible !== undefined) this.peterCap.visible = capVisible;
       renderer.setRenderTarget(oldTarget); renderer.setClearColor(oldColor,oldAlpha); renderer.autoClear=oldAutoClear;
       target.dispose();
     }
@@ -293,6 +298,7 @@ export class PlayerView {
     this.packet.shell.rotation.set(0, 0, 0);
     this.helmet.visible = this.shield.visible = this.board.visible = this.child.group.visible = false;
     if(this.tiara) this.tiara.visible = true;
+    if(this.peterCap) this.peterCap.visible = true;
     for (const p of this.batch) p.group.visible = false;
   }
 
@@ -371,6 +377,7 @@ export class PlayerView {
     this.helmet.visible = p.helmet > 0;
     this.shield.visible = p.helmet > 0 || sim.slipstreamExitGrace > 0;
     if(this.tiara) this.tiara.visible = !(this.character === 'ifd' && p.helmet > 0);
+    if(this.peterCap) this.peterCap.visible = !(this.character === 'peter-todd' && p.helmet > 0);
     this.shield.rotation.z = this.time;
     this.shield.position.y = 0.75 + Math.sin(this.time * 3) * 0.1;
     this.shield.scale.setScalar(1 + Math.sin(this.time * 4) * 0.035);
