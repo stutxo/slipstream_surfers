@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Block course launch regression</title>
+  <style>
+    body { background: #14171b; color: #eee; font: 14px/1.5 system-ui; margin: 22px; }
+    h1 { font-size: 20px; } iframe { width: min(640px, 100%); height: 320px; border: 1px solid #777; }
+  </style>
+</head>
+<body>
+  <h1>Block course launch regression</h1>
+  <output id="status" role="status">Running with simulated block observations…</output>
+  <ol id="checks"></ol>
+  <script type="module">
+    import { Sim } from '/src/sim/sim.ts';
+    import { blockCourseSeed } from '/src/block-course.ts';
+
+    // This Vite-only fixture runs the production main entry with an isolated player profile.
+    if (new URLSearchParams(location.search).has('test')) {
+      Object.defineProperty(window, 'localStorage', { value: parent.fixtureStorage });
+      const page = new DOMParser().parseFromString(await (await fetch('/index.html')).text(), 'text/html');
+      const base = document.createElement('base');
+      base.href = '/';
+      document.head.replaceChildren(base, ...page.head.querySelectorAll('link,meta,style,title'));
+      document.body.replaceChildren(...Array.from(page.body.children).filter(el => el.tagName !== 'SCRIPT'));
+      await import('/src/main.ts');
+    } else {
+      const memory = new Map();
+      window.fixtureStorage = {
+        getItem: key => memory.get(key) ?? null,
+        setItem: (key, value) => memory.set(key, String(value)),
+      };
+      const status = document.querySelector('#status');
+      let frame, run;
+      async function loadGame() {
+        frame?.remove();
+        frame = document.createElement('iframe');
+        frame.title = 'Game under test';
+        frame.src = '?test';
+        document.body.append(frame);
+        const deadline = performance.now() + 30_000;
+        while (!frame.contentWindow.__run?.ready) {
+          if (performance.now() > deadline) throw new Error('Game boot timed out');
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        run = frame.contentWindow.__run;
+      }
+      function check(ok, message) {
+        if (!ok) throw new Error(message);
+        const li = document.createElement('li');
+        li.textContent = message;
+        document.querySelector('#checks').append(li);
+      }
+      function click(id) {
+        const button = frame.contentDocument.getElementById(id);
+        if (!button?.getClientRects().length) throw new Error('Expected visible control ' + id);
+        button.click();
+      }
+      function feed(status, tip = null) {
+        run.setChain({status, tip, pendingTx: null, vsize: null});
+      }
+      function courseIs(tip) {
+        const active = run.state().course;
+        return active?.height === tip.height && active?.hash === tip.hash;
+      }
+      function layout(sim) {
+        sim.track.ensure(1400);
+        return JSON.stringify(sim.obs.filter(ob => ob.d0 > 275 && ob.d0 < 1200)
+          .map(({kind, lane, d0, variant}) => [kind, lane, d0, variant]));
+      }
+      function courseMatches(tip) {
+        const seed = blockCourseSeed(tip.hash);
+        const expected = new Sim(seed);
+        expected.reset(seed, false);
+        return courseIs(tip) && layout(run.sim) === layout(expected);
+      }
+      const genesis = {height: 0, hash: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f'};
+      const tipA = {height: 900000, hash: 'a'.repeat(64)};
+      const tipB = {height: 900001, hash: 'b'.repeat(64)};
+      const reorg = {height: 900001, hash: 'c'.repeat(64)};
+      try {
+        await loadGame();
+        click('btn-play');
+        click('btn-play');
+        check(run.state().screen === 'start' && run.state().waitingForBlock, 'An early click queues a single run while the first tip is pending.');
+        feed('live', tipA);
+        await Promise.resolve();
+        check(run.state().screen === 'play' && !run.state().waitingForBlock && courseMatches(tipA), 'The first observed block starts the queued run with its generated track.');
+        run.step(.2);
+        const distance = run.state().d;
+        feed('live', tipA);
+        feed('live', tipB);
+        check(run.state().d === distance && distance > 0 && courseIs(tipA), 'Repeated and newer observations leave the active run on its starting block.');
+        click('btn-pause');
+        click('btn-resume');
+        check(run.state().screen === 'play' && run.state().d === distance && courseIs(tipA), 'Resuming preserves the original block and player position.');
+        click('btn-pause');
+        click('btn-restart');
+        check(run.state().d === 0 && courseMatches(tipB), 'Restarting from pause generates the latest observed block course.');
+        run.clear();
+        run.place('train', 1, 6);
+        run.step(3);
+        check(run.state().screen === 'over' && courseIs(tipB), 'Results identify the block actually played.');
+        feed('live', reorg);
+        click('btn-again');
+        check(courseMatches(reorg), 'Retry uses the replacement block hash even when the height stays the same.');
+        await loadGame();
+        feed('offline');
+        const key = new frame.contentWindow.KeyboardEvent('keydown', {code: 'Enter', bubbles: true, cancelable: true});
+        frame.contentWindow.dispatchEvent(key);
+        check(run.state().screen === 'play' && courseMatches(reorg), 'An offline keyboard start uses the last observed block from the saved profile.');
+        memory.clear();
+        await loadGame();
+        click('s-start');
+        feed('offline');
+        await Promise.resolve();
+        check(run.state().screen === 'play' && courseMatches(genesis), 'A first-visit offline launch from the title background uses the Bitcoin genesis block.');
+        status.textContent = 'Passed all block-course launch checks.';
+      } catch (error) {
+        status.textContent = 'Failed — ' + error.message;
+        console.error(error);
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,10 +1,10 @@
 // Slipstream edition copy. The upstream i18n API is retained for its UI integration.
 export type Lang = 'en';
 const words = {
-  title: 'Slipstream Surfers', tagline: 'Too interesting for the public mempool.', play: 'ACTIVATE SLIPSTREAM →', best: 'Best run', coinsTotal: 'Sats stacked',
+  title: 'Slipstream Surfers', tagline: 'Too interesting for the public mempool.', best: 'Best run', coinsTotal: 'Sats stacked',
   ctrlKeys: '← → / A D switch cable · ↑ W Space jump · ↓ S slide · P pause', ctrlTouch: 'Swipe to switch cables · swipe up to jump · down to slide',
-  tapToStart: 'Press Space to start', paused: 'Transmission paused', resume: 'Keep surfing →', restart: 'New transaction', home: 'Back to network',
-  over: 'Trace complete.', score: 'Score', coins: 'Sats', distance: 'Distance', newBest: 'New network record', again: 'Try another route →',
+  tapToStart: 'Press Space to start', paused: 'Transmission paused', resume: 'Keep surfing →', home: 'Back to network',
+  over: 'Trace complete.', score: 'Score', coins: 'Sats', distance: 'Distance', newBest: 'New network record',
   preparing: 'Connecting to the network…', loading: 'Loading', loadFail: 'Connection failed. Please refresh.',
   hintJumpKeys: '↑ Jump the fee spike', hintJumpTouch: 'Swipe up — fee spike ahead', hintSlideKeys: '↓ Slide beneath the scanner', hintSlideTouch: 'Swipe down — scanner ahead',
   hintLaneKeys: '← → Dodge the policy checkpoint', hintLaneTouch: 'Switch cables to dodge', hintRamp: 'Take the ramp. Surf the mining racks.',

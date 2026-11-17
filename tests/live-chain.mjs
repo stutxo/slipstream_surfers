@@ -31,9 +31,10 @@ export async function checkLiveChain(startLiveChain) {
   let tips = block(100), stats = { count: 45, vsize: 234_567 }, slow = false, limited = false, stall = false;
   let release, calls = 0;
   const updates = [], rewards = [];
-  let stop;
+  let feed;
   try {
     const fetcher = async (url, options) => {
+      assert.equal(options.cache, 'no-store');
       assert.equal(options.credentials, 'omit');
       assert.equal(options.referrerPolicy, 'no-referrer');
       calls++;
@@ -46,7 +47,7 @@ export async function checkLiveChain(startLiveChain) {
       if (slow) return new Promise(resolve => { release = () => resolve(response(tips)); });
       return response(tips);
     };
-    stop = startLiveChain(state => updates.push(state), tip => rewards.push(tip.height), fetcher, 1_000);
+    feed = startLiveChain(state => updates.push(state), tip => rewards.push(tip.height), fetcher, 1_000);
     await flush();
     assert.deepEqual(updates.at(-1), { status: 'live', tip: { hash: hash(100), height: 100 }, pendingTx: 45, vsize: 234_567 });
     assert.deepEqual(rewards, [], 'initial tip establishes a baseline');
@@ -67,6 +68,11 @@ export async function checkLiveChain(startLiveChain) {
     await advance();
     assert.equal(updates.at(-1).status, 'offline');
     assert.equal(updates.at(-1).tip.height, 105);
+    const failedCalls = calls;
+    feed.refreshIfStale();
+    feed.refreshIfStale();
+    assert.equal(calls, failedCalls, 'launch during failure backoff uses the cached course');
+    assert.equal(updates.at(-1).status, 'offline');
     tips = block(106, 203);
     assert.equal(await advance(), 2_000, 'invalid tip backs off');
     assert.deepEqual(rewards, [101, 104, 105], 'first response after failure rebaselines');
@@ -98,7 +104,9 @@ export async function checkLiveChain(startLiveChain) {
     const beforeOnline = calls;
     browser.navigator.onLine = true;
     browser.dispatchEvent(new Event('online'));
+    feed.refreshIfStale();
     assert.equal(calls, beforeOnline, 'resuming respects Retry-After');
+    assert.equal(updates.at(-1).status, 'offline', 'launch does not wait for Retry-After');
     assert.equal(await advance(), 12_000);
     assert.equal(updates.at(-1).status, 'live');
     tips = block(108, 250, 222);
@@ -113,13 +121,51 @@ export async function checkLiveChain(startLiveChain) {
     assert.equal(await advance(), 2_000);
     assert.equal(updates.at(-1).tip.height, 109);
     assert.deepEqual(rewards, [101, 104, 105], 'fresh baseline after a timeout');
-    stop();
+    feed.stop();
     assert.equal(timers.size, 0);
     const beforeStop = calls;
+    feed.refreshIfStale();
     browser.dispatchEvent(new Event('online'));
     assert.equal(calls, beforeStop);
+
+    // A typical run starts between the regular 60-second polls.
+    tips = block(200);
+    updates.length = rewards.length = 0;
+    feed = startLiveChain(state => updates.push(state), tip => rewards.push(tip.height), fetcher);
+    const firstCalls = calls;
+    feed.refreshIfStale();
+    assert.equal(updates.at(-1).status, 'connecting', 'cold launch joins the first poll');
+    assert.equal(calls, firstCalls);
+    await flush();
+    now += 15_000;
+    feed.refreshIfStale();
+    assert.equal(calls, firstCalls, 'a fresh observation starts without another fetch');
+    assert.equal(updates.at(-1).status, 'live');
+    now += 1;
+    slow = true;
+    tips = block(201);
+    feed.refreshIfStale();
+    feed.refreshIfStale();
+    assert.equal(calls, firstCalls + 2, 'multiple starts share the one stale-tip refresh');
+    assert.equal(updates.at(-1).status, 'connecting', 'the UI can queue the launch synchronously');
+    assert.equal(updates.at(-1).tip.height, 200);
+    release();
+    await flush();
+    assert.equal(updates.at(-1).tip.height, 201);
+    assert.deepEqual(rewards, [201], 'launch refresh preserves block observation continuity');
+    tips = block(202);
+    assert.equal(await advance(), 60_000);
+    const duringPoll = calls;
+    assert.equal(updates.at(-1).status, 'live', 'background polling keeps the last live reading visible');
+    feed.refreshIfStale();
+    assert.equal(updates.at(-1).status, 'connecting', 'a launch waits for the pending background poll');
+    assert.equal(calls, duringPoll);
+    release();
+    await flush();
+    assert.equal(updates.at(-1).tip.height, 202);
+    assert.deepEqual(rewards, [201, 202]);
   } finally {
-    stop?.();
+    feed?.stop();
     Date.now = original.now;
     for (const name of ['window','document']) {
       if (original[name] === undefined) delete globalThis[name];

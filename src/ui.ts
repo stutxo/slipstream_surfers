@@ -8,7 +8,6 @@ import type { ChainFeed } from './live-chain';
 export type Screen = 'start' | 'play' | 'pause' | 'over';
 export interface UIHandlers {
   play(): void;
-  playBlock?(): void;
   resume(): void;
   pause(): void;
   restart(): void;
@@ -36,6 +35,8 @@ export class UI {
   private deliveryTimer = 0;
   private blockSeconds = 0;
   private blockHeight: number | null = null;
+  private nextCourse = 'current block';
+  private waitingForBlock = false;
   touch = matchMedia('(pointer: coarse)').matches;
   private last = { score: -1, coins: -1, mult: -1, power: '' };
 
@@ -80,7 +81,6 @@ export class UI {
             </div>
             <p class="character-detail" id="character-detail" aria-live="polite"><b id="character-selected"></b><span id="character-subtitle"></span></p>
           </div>
-          <button class="big" id="btn-play" data-k="play"></button>
           <div id="start-chain">
             <section class="chain-panel" id="chain-panel" aria-label="Bitcoin mainnet" data-state="connecting">
               <div class="chain-header">
@@ -88,17 +88,14 @@ export class UI {
                 <span class="chain-connection" id="chain-connection">Connecting</span>
               </div>
               <div class="chain-metrics">
-                <div><small>Latest block</small><strong id="chain-height">—</strong></div>
+                <div><small id="chain-height-label">Latest block</small><strong id="chain-height">—</strong></div>
                 <div><small>Pending transactions</small><strong id="chain-pending">—</strong></div>
                 <a id="chain-source" href="https://mempool.space/" target="_blank" rel="noopener">mempool.space ↗</a>
               </div>
-              <p>A block mined mid-run gives 2× pickup score for 21s.</p>
-              <div class="chain-launch">
-                <button type="button" id="btn-block-run" disabled>Surf this block →</button>
-                <span>The block hash sets the course.</span>
-              </div>
+              <p id="chain-note">A block mined mid-run gives 2× pickup score for 21s.</p>
             </section>
           </div>
+          <button class="big" type="button" id="btn-play"></button>
           <div id="start-missions">
             <details class="mission-sheet" id="mission-sheet">
               <summary><span id="mission-set">Missions</span><span id="mission-mult"></span></summary>
@@ -130,7 +127,7 @@ export class UI {
           <button class="big" id="btn-resume" data-k="resume"></button>
           <div id="pause-chain"></div>
           <div id="pause-missions"></div>
-          <button class="ghost" id="btn-restart" data-k="restart"></button>
+          <button class="ghost" id="btn-restart"></button>
           <button class="ghost" id="btn-home" data-k="home"></button>
         </div>
       </section>
@@ -145,7 +142,7 @@ export class UI {
             <div><small data-k="distance"></small><b id="r-dist">0</b></div>
             <div><small data-k="best"></small><b id="r-best">0</b></div>
           </div>
-          <button class="big" id="btn-again" data-k="again"></button>
+          <button class="big" id="btn-again"></button>
           <div id="over-missions"></div>
           <button class="ghost" id="btn-home2" data-k="home"></button>
         </div>
@@ -153,7 +150,6 @@ export class UI {
     root.querySelectorAll<HTMLElement>('[id]').forEach((e) => (this.el[e.id] = e));
     const tap = (id: string, fn: () => void) => this.el[id].addEventListener('click', (e) => { e.stopPropagation(); fn(); });
     tap('btn-play', () => h.play());
-    tap('btn-block-run', () => h.playBlock?.());
     tap('btn-pause', () => h.pause());
     tap('btn-resume', () => h.resume());
     tap('btn-restart', () => h.restart());
@@ -189,6 +185,7 @@ export class UI {
     this.setMuted(muted);
     this.setCharacter(DEFAULT_CHARACTER);
     this.texts();
+    this.setWaitingForBlock(false);
   }
 
   setCharacter(id: CharacterId) {
@@ -257,24 +254,39 @@ export class UI {
     const { status, tip, pendingTx } = feed;
     const source = this.el['chain-source'] as HTMLAnchorElement;
     const height = tip ? '#' + tip.height.toLocaleString('en-US') : '—';
+    this.el['chain-height-label'].textContent = tip && status !== 'live' ? 'Last known block' : 'Latest block';
     this.el['chain-height'].textContent = height;
     this.el['chain-pending'].textContent = pendingTx === null ? '—' : pendingTx.toLocaleString('en-US');
     this.el['chain-panel'].dataset.state = status;
     this.el['chain-hud'].dataset.state = status;
     this.el['chain-connection'].textContent = status === 'live' ? 'Live'
-      : status === 'offline' ? (tip ? 'Offline · last seen' : 'Offline') : 'Connecting';
+      : status === 'offline' ? (tip ? 'Offline · last seen' : 'Offline') : tip ? 'Reconnecting' : 'Connecting';
+    this.el['chain-note'].textContent = status === 'offline'
+      ? tip ? 'The last known block sets your next course.' : 'Your next course uses Bitcoin’s genesis block (#0).'
+      : 'A block mined mid-run gives 2× pickup score for 21s.';
     source.href = tip ? 'https://mempool.space/block/' + tip.hash : 'https://mempool.space/';
     source.setAttribute('aria-label', tip ? 'View block ' + height + ' on mempool.space' : 'View mempool.space');
-    (this.el['btn-block-run'] as HTMLButtonElement).disabled = status !== 'live' || !tip;
+    this.nextCourse = status === 'offline'
+      ? tip ? 'last known block ' + height : 'genesis block'
+      : status === 'live' && tip ? 'block ' + height : 'current block';
+    this.setWaitingForBlock(this.waitingForBlock);
     const pending = pendingTx === null ? '' : ' · ' + compactCount.format(pendingTx) + ' pending';
     this.el['chain-ticker'].textContent = status === 'live' && tip ? 'LIVE ' + height + pending
       : status === 'offline' ? (tip ? 'OFFLINE · ' + height : 'Mainnet · offline') : 'Mainnet · connecting';
   }
 
+  setWaitingForBlock(waiting: boolean) {
+    this.waitingForBlock = waiting;
+    for (const id of ['btn-play', 'btn-again', 'btn-restart']) {
+      const button = this.el[id];
+      button.setAttribute('aria-busy', String(waiting));
+      button.textContent = waiting ? 'Finding current block…'
+        : id === 'btn-restart' ? 'Restart on ' + this.nextCourse : 'Surf ' + this.nextCourse + ' →';
+    }
+  }
+
   setBlockCourse(height: number | null) {
     const label = height === null ? '' : 'Block course #' + height.toLocaleString('en-US');
-    this.el['btn-again'].textContent = height === null ? t('again') : 'Replay this block →';
-    this.el['btn-restart'].textContent = height === null ? t('restart') : 'Restart block course';
     for (const id of ['pause-block-course', 'over-block-course']) {
       this.el[id].hidden = height === null;
       this.el[id].textContent = label;

@@ -12,6 +12,7 @@ export interface ChainFeed {
 
 const API = 'https://mempool.space/api/';
 const TIMEOUT_MS = 8_000;
+const LAUNCH_FRESHNESS_MS = 15_000;
 const HASH = /^[0-9a-f]{64}$/i;
 
 function parseTip(body: unknown) {
@@ -41,7 +42,7 @@ export function startLiveChain(
   fetcher: typeof fetch = fetch,
   pollIntervalMs = 60_000,
 ) {
-  let state: ChainFeed = { status: 'connecting', tip: null, pendingTx: null, vsize: null };
+  let state: ChainFeed = { status: 'offline', tip: null, pendingTx: null, vsize: null };
   let observedAt: number | null = null;
   let highest = -1;
   let timer = 0;
@@ -57,7 +58,7 @@ export function startLiveChain(
     const timeout = window.setTimeout(() => controller.abort(), TIMEOUT_MS);
     async function read(path: string) {
       const response = await fetcher(API + path, {
-        signal: controller.signal, credentials: 'omit', referrerPolicy: 'no-referrer',
+        signal: controller.signal, cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer',
       });
       if (response.ok) return response.json();
       if (response.status === 429 || response.status === 503) {
@@ -91,12 +92,13 @@ export function startLiveChain(
       state = { ...state, status: 'offline' };
       observedAt = null;
       backoff = Math.min(backoff * 2, 300_000);
+      retryAfter = Math.max(retryAfter, now + backoff);
     }
-    onUpdate(state);
-    if (block && newBlock && !stopped) onBlock(block.tip);
     if (!stopped && !document.hidden && window.navigator.onLine) {
       timer = window.setTimeout(wake, Math.min(2_147_483_647, Math.max(backoff, retryAfter - now)));
     }
+    onUpdate(state);
+    if (block && newBlock && !stopped) onBlock(block.tip);
   }
 
   function suspend() {
@@ -105,10 +107,21 @@ export function startLiveChain(
     active = null;
     observedAt = null;
   }
-  function wake() {
+  function wake(announce = false) {
     const remaining = retryAfter - Date.now();
-    if (remaining > 0) timer = window.setTimeout(wake, Math.min(2_147_483_647, remaining));
-    else void poll();
+    if (!active && remaining > 0) {
+      timer = window.setTimeout(wake, Math.min(2_147_483_647, remaining));
+      if (announce && state.status !== 'offline') {
+        state = { ...state, status: 'offline' };
+        onUpdate(state);
+      }
+      return;
+    }
+    void poll();
+    if (announce && state.status !== 'connecting') {
+      state = { ...state, status: 'connecting' };
+      onUpdate(state);
+    }
   }
   function availability() {
     if (document.hidden || !window.navigator.onLine) {
@@ -119,19 +132,26 @@ export function startLiveChain(
     }
     if (active || state.status === 'live') return;
     window.clearTimeout(timer);
-    state = { ...state, status: 'connecting' };
-    onUpdate(state);
-    wake();
+    wake(true);
+  }
+  /** A launch can share an active poll. Repeated launches within 15s reuse its tip. */
+  function refreshIfStale() {
+    if (stopped || document.hidden || !window.navigator.onLine) return;
+    const age = observedAt === null ? Infinity : Date.now() - observedAt;
+    if (state.status === 'live' && age >= 0 && age <= LAUNCH_FRESHNESS_MS) return;
+    window.clearTimeout(timer);
+    wake(true);
   }
   document.addEventListener('visibilitychange', availability);
   window.addEventListener('online', availability);
   window.addEventListener('offline', availability);
   availability();
-  return () => {
+  function stop() {
     stopped = true;
     suspend();
     document.removeEventListener('visibilitychange', availability);
     window.removeEventListener('online', availability);
     window.removeEventListener('offline', availability);
-  };
+  }
+  return { stop, refreshIfStale };
 }

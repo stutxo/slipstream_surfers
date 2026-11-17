@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { Sim } from './sim/sim';
 import { startLiveChain, type ChainFeed, type ChainTip } from './live-chain';
-import { blockCourseSeed } from './block-course';
+import { blockCourseSeed, cachedBlock, GENESIS_BLOCK } from './block-course';
 import { solve, type Spec } from './sim/track';
 import { World } from './view/world';
 import { createBitcoinCore } from './view/models';
@@ -63,8 +63,10 @@ async function main() {
   let best = load('best', 0);
   let bank = load('bank', 0);
   let state: Screen = 'start';
-  let chain: ChainFeed | null = null;
+  let chain: ChainFeed = { status: 'connecting', tip: cachedBlock(load('lastBlock', null)), pendingTx: null, vsize: null };
+  let feed: ReturnType<typeof startLiveChain> | null = null;
   let course: ChainTip | null = null;
+  let waitingForBlock = false;
   let overTimer = 0;
   const horned = new Set<number>();
 
@@ -86,17 +88,11 @@ async function main() {
     ui.setMuted(audio.muted);
   };
   const ui = new UI(document.getElementById('ui')!, {
-    play: () => play(),
-    playBlock: () => {
-      if (state !== 'start' || chain?.status !== 'live' || !chain.tip) return;
-      course = chain.tip;
-      toTitle(false);
-      play();
-    },
+    play: startCurrentBlock,
     resume: () => resume(),
     pause: () => pause(),
-    restart: () => { toTitle(false); play(); },
-    home: () => toTitle(true),
+    restart: startCurrentBlock,
+    home: showTitle,
     toggleMute,
     langChanged: () => {},
     selectCharacter: (id) => {
@@ -108,6 +104,7 @@ async function main() {
     },
   }, audio.muted);
   ui.setCharacter(selectedCharacter);
+  ui.setChain(chain);
 
   function updateMissionSheet() {
     ui.setMissions(sim.missions.state.set, sim.baseMult, sim.missions.goals());
@@ -118,13 +115,11 @@ async function main() {
     savedMissionRevision = sim.missions.revision;
   }
 
-  let seed = (Date.now() % 100000) + 1;
-  function toTitle(show: boolean) {
+  function prepareCourse(tip: ChainTip | null) {
     cancelSwipe();
-    if (show) course = null;
-    seed = (seed * 48271) % 2147483647;
+    course = tip;
     sim.noSpawn = false;
-    sim.reset(course ? blockCourseSeed(course.hash) : seed, !load('tutorialDone', false));
+    sim.reset(blockCourseSeed((tip ?? GENESIS_BLOCK).hash), !load('tutorialDone', false));
     world.resetScenery();
     world.fx.clear();
     audio.stopMusic();
@@ -133,15 +128,35 @@ async function main() {
     ui.setStart(best, bank);
     ui.setBlockCourse(course?.height ?? null);
     updateMissionSheet();
-    if (show) ui.show('start');
   }
-  function play() {
+  function setWaiting(waiting: boolean) {
+    waitingForBlock = waiting;
+    ui.setWaitingForBlock(waiting);
+  }
+  function showTitle() {
+    setWaiting(false);
+    prepareCourse(null);
+    ui.show('start');
+  }
+  function launchCourse() {
+    setWaiting(false);
+    prepareCourse(chain.tip ?? GENESIS_BLOCK);
+    playPrepared();
+  }
+  function startCurrentBlock() {
+    if (state === 'play' || waitingForBlock) return;
     audio.unlock();
-    audio.click();
-    if (state === 'over') toTitle(false);
-    if (state !== 'start') return;
+    feed?.refreshIfStale();
+    if (chain.status === 'connecting') {
+      setWaiting(true);
+      return;
+    }
+    launchCourse();
+  }
+  function playPrepared() {
     state = 'play';
     sim.start();
+    audio.click();
     audio.startMusic();
     ui.show('play');
   }
@@ -155,6 +170,7 @@ async function main() {
   }
   function resume() {
     if (state !== 'pause') return;
+    setWaiting(false);
     audio.unlock();
     state = 'play';
     audio.startMusic();
@@ -162,8 +178,8 @@ async function main() {
   }
   function onAction(a: Action) {
     if (a === 'mute') { toggleMute(); return; }
-    if (state === 'start') { if (a === 'up' || a === 'confirm') play(); return; }
-    if (state === 'over') { if ((a === 'up' || a === 'confirm') && overTimer > 0.6) { toTitle(false); play(); } return; }
+    if (state === 'start') { if (a === 'up' || a === 'confirm') startCurrentBlock(); return; }
+    if (state === 'over') { if ((a === 'up' || a === 'confirm') && overTimer > 0.6) startCurrentBlock(); return; }
     if (state === 'pause') { if (a === 'pause' || a === 'confirm') resume(); return; }
     audio.unlock();
     if (a === 'pause') pause();
@@ -173,7 +189,9 @@ async function main() {
     else if (a === 'down') sim.down();
   }
   const cancelSwipe = bindInput(document.getElementById('ui')!, onAction, () => state === 'play' && sim.alive);
-  document.addEventListener('visibilitychange', () => { if (document.hidden && !TEST) pause(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && !TEST) { setWaiting(false); pause(); }
+  });
 
   function handle(ev: SimEvent) {
     world.event(ev);
@@ -268,7 +286,7 @@ async function main() {
     if (draw) renderer.render(world.scene, world.camera);
   }
 
-  toTitle(false);
+  prepareCourse(null);
   boot.set(0.97);
   await nextFrame();
   world.sync(sim, 0, true);
@@ -278,21 +296,32 @@ async function main() {
   ui.show('start');
   boot.done();
 
+  function updateChain(snapshot: ChainFeed) {
+    const tip = snapshot.tip ?? chain.tip;
+    if (snapshot.status === 'live' && tip && (chain.tip?.hash !== tip.hash || chain.tip.height !== tip.height)) {
+      save('lastBlock', tip);
+    }
+    chain = { ...snapshot, tip };
+    ui.setChain(chain);
+    world.setMempoolSize(snapshot.status === 'live' ? snapshot.vsize : null);
+    if (waitingForBlock && snapshot.status !== 'connecting') {
+      // Let the feed award any new-block event to the run already in progress.
+      queueMicrotask(() => {
+        if (waitingForBlock && chain.status !== 'connecting') launchCourse();
+      });
+    }
+  }
   if (!TEST) {
-    const connect = () => startLiveChain(snapshot => {
-      chain = snapshot;
-      ui.setChain(snapshot);
-      world.setMempoolSize(snapshot.status === 'live' ? snapshot.vsize : null);
-    }, tip => {
+    const connect = () => startLiveChain(updateChain, tip => {
       if (state === 'play' && sim.startBlockBonus(tip.height)) {
         ui.setBlockBonus(sim.blockBonusSeconds, tip.height);
         audio.level();
       }
     });
-    let disconnect = connect();
-    window.addEventListener('pagehide', () => disconnect());
+    feed = connect();
+    window.addEventListener('pagehide', () => { setWaiting(false); feed?.stop(); });
     window.addEventListener('pageshow', event => {
-      if (event.persisted) disconnect = connect();
+      if (event.persisted) feed = connect();
     });
   }
 
@@ -315,6 +344,7 @@ async function main() {
       ready: true,
       sceneryReady,
       sim, world, renderer,
+      setChain: updateChain,
       start(o: { seed?: number; tutorial?: boolean; noSpawn?: boolean; invincible?: boolean; speed?: number } = {}) {
         sim.noSpawn = !!o.noSpawn;
         sim.invincible = !!o.invincible;
@@ -323,10 +353,10 @@ async function main() {
         world.resetScenery();
         world.fx.clear();
         state = 'start';
-        play();
+        playPrepared();
         return sim.snapshot();
       },
-      title() { toTitle(true); tick(0); return true; },
+      title() { showTitle(); tick(0); return true; },
       step(sec: number, dt = 1 / 60, draw = false) {
         const n = Math.max(1, Math.round(sec / dt));
         for (let i = 0; i < n; i++) tick(dt, false);
@@ -341,7 +371,7 @@ async function main() {
         return sim.snapshot();
       },
       render() { renderer.render(world.scene, world.camera); return true; },
-      state() { return { screen: state, ...sim.snapshot() }; },
+      state() { return { screen: state, course, waitingForBlock, ...sim.snapshot() }; },
       clear() { sim.clearWorld(); return true; },
       place(kind: ObKind, lane: number, at: number, cars = 1) {
         const d0 = ahead(at);
@@ -371,7 +401,7 @@ async function main() {
         const res = solve(specs, 0, sim.track.frontier, [1], speedAt, true, 1);
         if (!res.path) return { ok: false, reason: 'no path' };
         state = 'start';
-        play();
+        playPrepared();
         let stumbles = 0, jumps = 0, slides = 0, lanes = 0;
         const STEPLEN = 0.5;
         const pathLane = (d: number) => res.path![Math.max(0, Math.min(res.path!.length - 1, Math.round(d / STEPLEN)))].lane;

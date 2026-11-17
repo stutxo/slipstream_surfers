@@ -24,11 +24,11 @@ The opening starts at 14 m/s, with a first action around two seconds and a minin
 
 ### Bitcoin mainnet
 
-The mainnet panel shows the latest Bitcoin block and the pending transaction count observed by mempool.space. Select **Surf this block** to play a course seeded by the block hash. The introductory obstacles are shared across courses. After the opening, everyone surfing the same block gets the same generated track. Retrying replays that course even if another block arrives.
+Every run starts on the latest Bitcoin block observed by mempool.space. Its hash sets the course. The opening obstacles are shared, then everyone on that block gets the same generated track. A run stays on its starting block through pause and resume. Starting again picks up the newest block.
 
-The turquoise packets beside the cables get denser as the observed mempool grows in virtual bytes. When the game observes a new block extending the previous tip during active play, the tunnel turns gold and track pickups earn **double score for 21 seconds of play**. The number of sats collected stays the same. An ordinary run can start immediately and continues if the feed drops.
+The turquoise packets beside the cables get denser as the observed mempool grows in virtual bytes. When the game observes a new block extending the previous tip during active play, the tunnel turns gold and track pickups earn **double score for 21 seconds of play**. The number of sats collected stays the same.
 
-The browser reads the public blocks and mempool summaries about once a minute while visible. The first sample, reconnects, and chain reorganizations establish a baseline. [mempool.space REST API](https://mempool.space/docs/api/rest).
+The browser checks public block and mempool data about once a minute while visible. Starting a run also refreshes a block observation older than 15 seconds. The game remembers the last observed block for offline play. If the feed is unavailable on a first visit, the course uses Bitcoin’s genesis block (#0). [mempool.space REST API](https://mempool.space/docs/api/rest).
 
 ### Obstacles
 

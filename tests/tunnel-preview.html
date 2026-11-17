@@ -182,7 +182,7 @@
         const h = height++;
         return Response.json([{height:h,id:hash(h),previousblockhash:hash(h-1)}]);
       }
-      const stop = startLiveChain(feed => {
+      const { stop } = startLiveChain(feed => {
         ui.setChain(feed);
         world.setMempoolSize(feed.status === 'live' ? feed.vsize : null);
         running = feed.status === 'live';
