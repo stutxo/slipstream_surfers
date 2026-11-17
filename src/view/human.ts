@@ -5,6 +5,8 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import type { CharacterId } from '../characters';
 import { addGlamHair, addTiaraAndEarrings, addGlamNecklaces, addGlamBangle } from './glam';
 import { addBackpack } from './backpack';
+import { addPeterHair } from './peter-hair';
+import { addPeterBeard, addPeterNose, addAviators } from './peter-face';
 import { addPodcastMic, addKeyboard } from './props';
 
 export interface RunnerParts {
@@ -26,8 +28,6 @@ const brown = new THREE.MeshPhongMaterial({ color: '#513426', shininess: 25 });
 const gold = new THREE.MeshPhongMaterial({ color: '#eac16d', shininess: 80, specular: '#ffe6a3' });
 const red = new THREE.MeshPhongMaterial({ color: '#bd343e', shininess: 18 });
 const cyan = new THREE.MeshBasicMaterial({ color: '#68ecff', toneMapped: false });
-const lens = new THREE.MeshPhongMaterial({ color: '#080f18', shininess: 110, specular: '#94b7ce' });
-const silver = new THREE.MeshPhongMaterial({ color: '#c3c9c6', shininess: 90 });
 const denim = new THREE.MeshPhongMaterial({ color: '#282f3c', shininess: 12 });
 const trackPants = new THREE.MeshPhongMaterial({ color: '#111216', shininess: 18 });
 
@@ -83,7 +83,8 @@ function badge(parent: THREE.Object3D, y: number, z: number, size = .29) {
 function head(parent: THREE.Group, id: HumanId, eyebrows: THREE.Mesh[]) {
   const isIFD = id === 'ifd', isPeter = id === 'peter-todd';
   const complexion = isIFD ? fairSkin : skin;
-  const h = new THREE.Group(); h.position.set(0,.53,0); parent.add(h);
+  const h = new THREE.Group(); h.position.set(0,isPeter ? .60 : .53,0); parent.add(h);
+  if (isPeter) h.scale.set(.94,.97,.97);
   h.name = id + '-head';
   if (isIFD) addGlamHair(h);
   oval(h, complexion,0,0,0,.315,.355,.27);
@@ -93,37 +94,32 @@ function head(parent: THREE.Group, id: HumanId, eyebrows: THREE.Mesh[]) {
     oval(h,new THREE.MeshPhongMaterial({color:isIFD?'#ce956f':'#c48261'}),side*.33,-.015,-.048,.026,.048,.014);
   }
   if (isPeter) {
-    // The cap and tousled fringe sit above the brow, keeping sunglasses readable.
-    oval(h,brown,0,.22,.025,.326,.19,.272);
-    for(let i=0;i<7;i++) {
-      const tuft=oval(h,i%3===0?new THREE.MeshPhongMaterial({color:'#765140',shininess:24}):brown,-.25+i*.08,.29+Math.sin(i*1.7)*.025,-.06-i%2*.10,.12,.055,.14);
-      tuft.rotation.z=-.35+i*.1;
-    }
-    oval(h,brown,0,-.19,-.10,.255,.20,.19);
-    oval(h,brown,0,-.305,-.135,.14,.12,.13);
+    addPeterHair(h);
+    addPeterBeard(h);
+    addAviators(h);
   }
   if (isIFD) addTiaraAndEarrings(h);
   for (const side of [-1,1]) {
-    if (isPeter) {
-      // Rounded aviator lenses plus metal bridge and arms.
-      const frame=oval(h,silver,side*.13,.065,-.257,.126,.092,.028);frame.rotation.z=side*.10;
-      const glass=oval(h,lens,side*.13,.064,-.282,.111,.079,.023);glass.rotation.z=side*.10;
-      tube(h,silver,[[side*.225,.10,-.25],[side*.29,.10,-.17],[side*.32,.075,-.02]],.012);
-      const shine=box(h,new THREE.MeshBasicMaterial({color:'#627c8e'}),side*.13-.028,.085,-.305,.012,.07,.005,.002);shine.rotation.z=-.45;
-    } else {
+    if (!isPeter) {
       oval(h,white,side*.125,.055,-.248,isIFD?.073:.083,isIFD?.052:.061,isIFD?.031:.04);
       oval(h,id==='portlandhodl'?cyan:new THREE.MeshPhongMaterial({color:'#5b7475'}),side*.125,.055,isIFD?-.274:-.282,isIFD?.031:.038,isIFD?.035:.044,.015);
       oval(h,black,side*.125,.055,isIFD?-.287:-.296,isIFD?.015:.018,isIFD?.023:.027,.008);
       oval(h,white,side*.125-.011,.072,isIFD?-.295:-.304,.009,.011,.005);
     }
-    const brow=box(h,brown,side*.126,.155,-.231,.13,.029,.03,.012);
-    brow.rotation.z=side*.1; brow.userData.restY=.155; eyebrows.push(brow);
+    const browY = isPeter ? .145 : .155;
+    const brow=box(h,brown,side*.126,browY,-.231,.13,isPeter ? .018 : .029,.03,.012);
+    brow.rotation.z=side*.1; brow.userData.restY=browY; eyebrows.push(brow);
     if (id==='portlandhodl') {
       const streak=box(h,cyan,side*.205,.055,-.3,.24,.018,.015,.004);streak.rotation.z=-side*.10;
       oval(h,cyan,side*.125,.055,-.31,.045,.024,.01);
     }
   }
-  if (isPeter) box(h,silver,0,.084,-.282,.078,.014,.02,.004);
+  if (isPeter) {
+    addPeterNose(h, complexion);
+    tube(h,new THREE.MeshPhongMaterial({color:'#915b49',shininess:10}),
+      [[-.083,-.149,-.243],[-.029,-.150,-.255],[.037,-.151,-.255],[.089,-.146,-.242]],.004);
+    return;
+  }
   oval(h,complexion,0,-.03,isIFD?-.266:-.277,isIFD?.042:.055,isIFD?.061:.078,isIFD?.047:.072);
   // Smiling mouths are tubes and teeth, so the face remains an actual 3D model.
   const mouthColor=new THREE.MeshPhongMaterial({color:isIFD?'#9f4e4d':'#6d3528'});
@@ -131,9 +127,6 @@ function head(parent: THREE.Group, id: HumanId, eyebrows: THREE.Mesh[]) {
   if(!isIFD) {
     const teeth=box(h,white,0,-.16,-.281,.14,.031,.013,.011);teeth.rotation.x=.12;
   } else tube(h,mouthColor,[[-.087,-.15,-.261],[0,-.145,-.285],[.087,-.147,-.26]],.009);
-  if(isPeter) {
-    for(const side of [-1,1]) {const moustache=oval(h,brown,side*.055,-.112,-.272,.066,.026,.025);moustache.rotation.z=side*.2;}
-  }
 }
 
 export function makeHuman(id: HumanId): RunnerParts {
@@ -143,7 +136,7 @@ export function makeHuman(id: HumanId): RunnerParts {
   const complexion=isIFD?fairSkin:skin;
   const cloth = isIFD ? black : isPeter ? red : dottedShirt();
   box(shell,cloth,0,0,0,isIFD?.46:.53,.53,.30,.095);
-  oval(shell,complexion,0,.285,0,.105,.13,.10);
+  oval(shell,complexion,0,isPeter ? .31 : .285,0,isPeter ? .12 : .105,isPeter ? .17 : .13,.10);
   if(isIFD) {
     triangle(shell,complexion,[[-.11,.254,-.155],[.11,.254,-.155],[0,.105,-.16]]);
     box(shell,gold,0,-.255,-.164,.09,.045,.016,.008);

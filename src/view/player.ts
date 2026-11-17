@@ -201,6 +201,7 @@ export class PlayerView {
     this.helmet.scale.setScalar(id === 'transaction' ? 1 : .84);
     // Scaling the original helmet also scales its local height; compensate at the attachment.
     if (id !== 'transaction') this.helmet.position.y += .25;
+    if (id === 'peter-todd') this.helmet.position.y += .055;
     this.mixer = new THREE.AnimationMixer(this.model);
     this.reset();
   }
@@ -242,6 +243,7 @@ export class PlayerView {
           rig.shell.rotation.set(0,0,0); this.pose(rig,0,false);
           if (id === 'transaction') { camera.position.set(-.36,1.27,-2.65); camera.lookAt(0,1.0,0); }
           else if (id === 'ifd') { camera.position.set(-.38,1.62,-2.75); camera.lookAt(0,1.34,0); }
+          else if (id === 'peter-todd') { camera.position.set(-1.02,1.60,-2.18); camera.lookAt(0,1.34,0); }
           else { camera.position.set(-.38,1.5,-2.55); camera.lookAt(0,1.25,0); }
           renderer.render(scene,camera);
           renderer.readRenderTargetPixels(target,0,0,size,size,pixels);
