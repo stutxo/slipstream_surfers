@@ -8,7 +8,7 @@ const words = {
   preparing: 'Connecting to the network…', loading: 'Loading', loadFail: 'Connection failed. Please refresh.',
   hintJumpKeys: '↑ Jump the fee spike', hintJumpTouch: 'Swipe up — fee spike ahead', hintSlideKeys: '↓ Slide beneath the scanner', hintSlideTouch: 'Swipe down — scanner ahead',
   hintLaneKeys: '← → Dodge the policy checkpoint', hintLaneTouch: 'Switch cables to dodge', hintRamp: 'Take the ramp. Surf the mining racks.',
-  magnet: 'Sat magnet', shoes: 'Script boost', double: 'Batching ×2', slipstream: 'Slipstream tunnel', helmet: 'Mining helmet', cpfp: 'CPFP boost',
+  magnet: 'Sat magnet', shoes: 'Script boost', double: 'Batching ×2', slipstream: 'Slipstream protection', helmet: 'Mining helmet', cpfp: 'CPFP boost',
   careful: 'Surveillance is closing in. Find another route.', mute: 'Sound off', sound: 'Sound on', mult: 'Batch multiplier', meters: 'm', lang: 'Language',
 };
 export type Key = keyof typeof words;

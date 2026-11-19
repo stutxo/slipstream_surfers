@@ -8,7 +8,7 @@ Live game: [Slipstream Surfers](https://slipstream-surfers.xenocardo.chatgpt.sit
 
 Choose from four runners on the start screen: Timmy Transaction, PortlandHODL, IFD, or Peter Todd. The menu previews the actual animated 3D model; the choice is remembered locally and used for every run. All runners share the same movement, collisions and power-ups.
 
-You are a non-standard transaction. Change cables, jump fees and checkpoints, slide beneath scanning eyes, and follow ramps onto mining racks and inscription packets. Slipstream grants nine seconds of protection from hazards and lets you lose the surveillance drone. Cross between the miners at the tunnel exit to earn **21 in-game sats** and one miner delivery. The three-second countdown keeps the lanes ahead visible. A 1.5-second exit shield gives you time to line up your next move, and any obstacle already overlapping during protection stays harmless until you clear it.
+You are a non-standard transaction. Change cables, jump fees and checkpoints, slide beneath scanning eyes, and follow ramps onto mining racks and inscription packets. Collect the turquoise ≋ Slipstream power-up for nine seconds of protection from hazards and to lose the surveillance drone. The wireframe tunnel is the network scenery throughout the run. When Slipstream ends, pass the miners in any lane to earn **21 in-game sats** and one miner delivery. The three-second countdown keeps the lanes ahead visible. A 1.5-second exit shield gives you time to line up your next move, and any obstacle already overlapping during protection stays harmless until you clear it.
 
 Open **Missions** at the start, on pause, or after a run. The first set asks for 10 mining-rack rooftop sats in one run, one miner delivery, and 50 collected sats. All three goals advance together. Best rooftop count and cumulative progress are saved in this browser. A completed set raises your base score multiplier by one, up to ×30. Batching temporarily doubles the earned multiplier. Delivery rewards go into your run total, while the pickup goals count sats collected on the track.
 
@@ -16,7 +16,7 @@ Open **Missions** at the start, on pause, or after a run. The first set asks for
 - P / Esc: pause. M: sound.
 - On a touchscreen, swipe to move, jump, or roll. The move triggers as soon as your finger crosses the gesture threshold.
 
-Power-ups: sat magnet, script jump boost, batching multiplier, Slipstream tunnel, one-hit mining helmet, and CPFP speed boost.
+Power-ups: sat magnet, script jump boost, batching multiplier, Slipstream protection, one-hit mining helmet, and CPFP speed boost.
 
 The opening starts at 14 m/s, with a first action around two seconds and a mining-rack ramp around five seconds. Speed builds toward 27 m/s sooner. Recurring rack formations offer connected rooftops, optional roof coin trails, and ramp access; the generator checks a clear route through each formation.
 

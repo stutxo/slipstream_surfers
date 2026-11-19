@@ -31,6 +31,10 @@ const red = new THREE.MeshPhongMaterial({ color: '#bd343e', shininess: 18 });
 const cyan = new THREE.MeshBasicMaterial({ color: '#68ecff', toneMapped: false });
 const denim = new THREE.MeshPhongMaterial({ color: '#282f3c', shininess: 12 });
 const trackPants = new THREE.MeshPhongMaterial({ color: '#111216', shininess: 18 });
+const trailUpper = new THREE.MeshPhongMaterial({ color: '#343a36', shininess: 10, specular: '#292b26' });
+const trailRubber = new THREE.MeshPhongMaterial({ color: '#20241f', shininess: 8 });
+const trailSole = new THREE.MeshPhongMaterial({ color: '#695440', shininess: 9 });
+const trailPanel = new THREE.MeshPhongMaterial({ color: '#656b54', shininess: 13 });
 
 function mesh(parent: THREE.Object3D, geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number) {
   const m = new THREE.Mesh(geometry, material);
@@ -52,6 +56,30 @@ function triangle(parent: THREE.Object3D, mat: THREE.Material, points: number[][
   g.setAttribute('position', new THREE.Float32BufferAttribute(points.flat(), 3));
   g.setIndex([0, 1, 2]); g.computeVertexNormals();
   return mesh(parent, g, mat, 0, 0, 0);
+}
+
+function trailShoe(leg: THREE.Group) {
+  const shoe = new THREE.Group();
+  shoe.name = 'peter-trail-shoe';
+  leg.add(shoe);
+  box(shoe,trailUpper,0,-.498,-.065,.229,.14,.365,.051);
+  box(shoe,trailSole,0,-.570,-.065,.247,.036,.383,.027);
+  box(shoe,trailRubber,0,-.586,-.065,.247,.017,.383,.008);
+  // Broad toe and heel guards wrap around the edges of the cloth upper.
+  box(shoe,trailRubber,0,-.526,-.216,.236,.085,.083,.026);
+  box(shoe,trailRubber,0,-.519,.092,.224,.105,.044,.018);
+  const tongue = box(shoe,trailPanel,0,-.433,-.085,.108,.018,.145,.008);
+  tongue.rotation.x = -.32;
+  for (const side of [-1,1]) {
+    const panel = box(shoe,trailPanel,side*.112,-.496,-.053,.017,.055,.171,.008);
+    panel.rotation.x = -.26;
+  }
+  for(let k=0;k<3;k++) {
+    box(shoe,trailRubber,0,-.430-k*.012,-.052-k*.035,.105,.010,.015,.004);
+    // Lateral tread lugs break up the sole along its outer edges.
+    box(shoe,trailRubber,0,-.586,-.197+k*.122,.255,.019,.039,.004);
+  }
+  box(shoe,trailPanel,0,-.436,.118,.057,.036,.015,.005);
 }
 
 let shirtMaterial: THREE.Material | undefined;
@@ -165,9 +193,12 @@ export function makeHuman(id: HumanId): RunnerParts {
       }
       mesh(leg,new THREE.CylinderGeometry(.087,.082,.045,12),trackPants,0,-.425,0);
     }
-    box(leg,white,0,-.51,-.07,.235,.17,.37,.06);
-    box(leg,isPeter?red:id==='portlandhodl'?cyan:gold,0,-.566,-.064,.239,.026,.34,.012);
-    for(let k=0;k<3;k++)box(leg,white,0,-.451,-.12-k*.045,.12,.012,.015,.004);
+    if(isPeter) trailShoe(leg);
+    else {
+      box(leg,white,0,-.51,-.07,.235,.17,.37,.06);
+      box(leg,id==='portlandhodl'?cyan:gold,0,-.566,-.064,.239,.026,.34,.012);
+      for(let k=0;k<3;k++)box(leg,white,0,-.451,-.12-k*.045,.12,.012,.015,.004);
+    }
     legs.push(leg);
     const arm=new THREE.Group();arm.position.set(side*(isIFD?.26:.30),1.11,0);group.add(arm);
     arm.rotation.z=side*.24;

@@ -1,7 +1,7 @@
 // The DOM layer: title screen, HUD, pause and result screens. Plain elements, no framework.
 import { t, getLang, setLang, LANGS, LANG_LABEL, type Key } from './i18n';
 import type { PowerKind } from './sim/types';
-import { POWER_TIME, SLIPSTREAM_EXIT_WARNING } from './config';
+import { POWER_TIME, SLIPSTREAM_EXIT_WARNING, SLIPSTREAM_EXIT_GRACE } from './config';
 import { CHARACTERS, DEFAULT_CHARACTER, characterInfo, type CharacterId } from './characters';
 import type { ChainFeed } from './live-chain';
 
@@ -104,6 +104,7 @@ export class UI {
               <details class="track-guide" id="track-guide">
                 <summary>Track guide</summary>
                 <dl>
+                  <dt>Slipstream</dt><dd>Collect the turquoise ≋ power-up for ${POWER_TIME.slipstream} seconds of hazard protection. The wireframe scenery marks the network around you. When the timer ends, pass the miners in any lane to earn 21 in-game sats. The exit shield lasts ${SLIPSTREAM_EXIT_GRACE} seconds to help you line up your next dodge.</dd>
                   <dt>RBF war</dt><dd>Jump the dueling fee bids. RBF lets a sender propose a replacement transaction with a higher fee.</dd>
                   <dt>Key exposure</dt><dd>Jump the checkpoint or switch cables. During the Coldcard multisig recovery, some users submitted rescue spends privately to keep them out of the public mempool.</dd>
                   <dt>Quantum watch</dt><dd>Slide under the violet scanner. In a hypothetical short-exposure quantum attack, a pending spend can reveal a public key. A private route limits who sees it before confirmation.</dd>
@@ -118,7 +119,7 @@ export class UI {
             <button class="chip" id="btn-mute2"></button>
           </div>
         </div>
-        <div class="field-guide"><div><b>01 / MINING RACK SURFING</b><span>Take the ramps. Link the rooftops.</span></div><div><b>02 / DODGE THE FILTERS</b><span>Jump fees. Slide under eyes.</span></div><div><b>03 / GO SLIPSTREAM</b><span>Private tunnel to the miner.</span></div></div>
+        <div class="field-guide"><div><b>01 / MINING RACK SURFING</b><span>Take the ramps. Link the rooftops.</span></div><div><b>02 / DODGE THE FILTERS</b><span>Jump fees. Slide under eyes.</span></div><div><b>03 / SLIPSTREAM POWER-UP</b><span>Collect the turquoise ≋ for ${POWER_TIME.slipstream}s of hazard protection.</span></div></div>
       </section>
       <section class="screen pause" id="s-pause">
         <div class="panel">

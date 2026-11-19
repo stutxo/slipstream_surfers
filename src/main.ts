@@ -12,7 +12,7 @@ import { UI, type Screen } from './ui';
 import { t, type Key } from './i18n';
 import { load, save } from './storage';
 import { characterId, characterInfo } from './characters';
-import { OB, trainLength, speedAt, SPEED, laneX, MOVER } from './config';
+import { OB, trainLength, speedAt, SPEED, laneX, MOVER, POWER_TIME } from './config';
 import type { ObKind, PowerKind, SimEvent } from './sim/types';
 
 interface Boot {
@@ -202,7 +202,7 @@ async function main() {
       case 'bump': audio.bump(); break;
       case 'land': if (ev.fall > 0.5) audio.land(); break;
       case 'coin': audio.coin(ev.streak); break;
-      case 'power': audio.power(); ui.toast(ev.kind === 'slipstream' ? 'Slipstream · 9s hazard protection' : t(ev.kind)); ui.flash('power'); break;
+      case 'power': audio.power(); ui.toast(ev.kind === 'slipstream' ? `Slipstream · ${POWER_TIME.slipstream}s hazard protection` : t(ev.kind)); ui.flash('power'); break;
       case 'powerEnd': audio.powerEnd(); break;
       case 'delivery': audio.coin(8); ui.confirmDelivery(ev.sats); break;
       case 'level': audio.level(); ui.toast('Mission set ' + ev.set + ' complete · ×' + ev.mult + ' score', 2000); break;
@@ -282,7 +282,7 @@ async function main() {
     ui.hud(Math.floor(sim.score), sim.coins, sim.mult, sim.power);
     ui.setBlockBonus(sim.alive ? sim.blockBonusSeconds : 0);
     ui.status(sim.d, sim.power.slipstream, sim.slipstreamExitGrace);
-    canvas.setAttribute('aria-label', `Slipstream Surfers: ${state}, ${Math.floor(sim.d)} metres, ${sim.coins} sats, lane ${sim.lane + 1}${sim.y > 2 ? ', on packet roof' : ''}${sim.power.slipstream > 0 ? ', private tunnel' : ''}${sim.slipstreamExitGrace > 0 ? ', exit shield' : ''}, character ${characterInfo(selectedCharacter).name}`);
+    canvas.setAttribute('aria-label', `Slipstream Surfers: ${state}, ${Math.floor(sim.d)} metres, ${sim.coins} sats, lane ${sim.lane + 1}${sim.y > 2 ? ', on packet roof' : ''}${sim.power.slipstream > 0 ? ', Slipstream protection active' : ''}${sim.slipstreamExitGrace > 0 ? ', exit shield' : ''}, character ${characterInfo(selectedCharacter).name}`);
     if (draw) renderer.render(world.scene, world.camera);
   }
 
